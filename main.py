@@ -431,6 +431,7 @@ def main() -> None:
         per_fold_preds_classical,
         per_fold_metrics_classical,
         fold_histories_classical,
+        xai_results_classical,
     ) = classical_nested_cv(
         raw_before=raw_before,
         raw_after=raw_after,
@@ -443,8 +444,13 @@ def main() -> None:
         optuna_all_trials_rows=optuna_all_trials_rows,
     )
 
-    # Hook for classical XAI (if available later)
-    xai_results_classical: List[Dict[str, np.ndarray]] = []
+    # Build & save classical topomap CSVs
+    if xai_results_classical:
+        all_occ_c = np.concatenate([r["occlusion"] for r in xai_results_classical], axis=0)
+        importance_dict_c = {"Occlusion": all_occ_c}
+        write_topomap_values_csv(importance_dict_c, used_ch_names, "classical", SAVE_DIR)
+        write_topomap_consensus_csv(importance_dict_c, used_ch_names, "classical", SAVE_DIR)
+
 
     # ---- per-fold artifacts for classical ----
     for i, pf in enumerate(per_fold_preds_classical, 1):

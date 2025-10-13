@@ -196,4 +196,4 @@ def classical_nested_cv(
         importance_dict = {'Occlusion': all_occlusion}
         create_xai_summary_table(importance_dict, ch_names, "classical", SAVE_DIR)
 
-    return per_fold_preds, per_fold_metrics, fold_histories
+    return per_fold_preds, per_fold_metrics, fold_histories, xai_results
