@@ -89,7 +89,8 @@ def make_logreg(C=1.0, max_pca=15, seed=None):
     ])
 
 
-def make_svc(C=1.0, gamma="scale", max_pca=15, seed=CFG.random_seed):
+def make_svc(C=1.0, gamma="scale", max_pca=15, seed=None):
+    seed = CFG.random_seed if seed is None else seed
     return Pipeline([
         ("scaler", StandardScaler(with_mean=True, with_std=True)),
         ("pca", PCA(n_components=min(max_pca, 15), svd_solver='full', random_state=seed)),
