@@ -115,6 +115,7 @@ from utils.settings import (
 
 # ========================== CONFIG ==========================
 SAVE_DIR = Path(CFG.data.save_dir).expanduser().resolve()
+SAVE_DIR.mkdir(parents=True, exist_ok=True)
 (SAVE_DIR / "figures").mkdir(parents=True, exist_ok=True)  # ensure plot dir
 
 # ========================== NEW HELPERS (ARTIFACTS) ==========================

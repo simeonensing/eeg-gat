@@ -1,5 +1,7 @@
-# config.py
 from __future__ import annotations
+from pathlib import Path
+PROJECT_ROOT = Path(__file__).resolve().parent
+# config.py
 
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -41,7 +43,7 @@ class DataConfig:
     ])
 
     # Where all CSVs/plots land
-    save_dir: str = "results"
+    save_dir: str = str((PROJECT_ROOT / "results").resolve())
 
     def ensure_dirs(self) -> None:
         Path(self.save_dir).mkdir(parents=True, exist_ok=True)
