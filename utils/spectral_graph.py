@@ -5,7 +5,11 @@ import numpy as np
 from mne import create_info
 from mne.time_frequency import tfr_array_morlet
 
-from main import graphs, gsp_filters as gsp_filters
+try:
+    from pygsp import graphs, filters as gsp_filters
+except Exception:
+    graphs = None
+    gsp_filters = None
 
 
 def full_power(data_uV, sfreq, all_freqs, n_cycles):

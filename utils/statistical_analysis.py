@@ -9,7 +9,9 @@ from scipy import stats
 from sklearn.calibration import calibration_curve
 from sklearn.metrics import confusion_matrix, brier_score_loss
 
-from main import SAVE_DIR
+from pathlib import Path
+from config import CFG
+SAVE_DIR = Path(CFG.data.save_dir)
 from utils.classical_features import expected_calibration_error
 
 
