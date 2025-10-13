@@ -67,7 +67,7 @@ def classical_nested_cv(
                 print(f"[Classical Outer {ofold + 1}/{used_K}] ERROR: Indices out of bounds! SKIPPING.")
                 continue
 
-            actual_purge = CFG.purge_pairs
+            actual_purge = CFG.cv.purge_pairs
             tr_idx = hard_purge_train_rows(tr_idx_base, va_idx, purge_pairs=actual_purge)
             if tr_idx.size == 0:
                 print(f"[Classical Outer {ofold + 1}/{used_K}] SKIPPED: purging removed all training dataset.")
@@ -75,8 +75,8 @@ def classical_nested_cv(
 
             y_tr, y_va = y_all[tr_idx], y_all[va_idx]
             if not valid_split(
-                    y_tr, y_va, min_train=CFG.min_train_rows, min_val=CFG.min_val_rows,
-                    min_pos=CFG.min_pos_per_split, min_neg=CFG.min_neg_per_split, ratio_lo=CFG.ratio_lo
+                    y_tr, y_va, min_train=CFG.cv.min_train_rows, min_val=CFG.cv.min_val_rows,
+                    min_pos=CFG.cv.min_pos_per_split, min_neg=CFG.cv.min_neg_per_split, ratio_lo=CFG.cv.ratio_lo
             ):
                 print(f"[Classical Outer {ofold + 1}/{used_K}] SKIPPED: split failed validation after purge.")
                 continue
@@ -106,9 +106,9 @@ def classical_nested_cv(
                         Xtr, ytr = X_all[itr], y_all[itr]
                         Xva, yva = X_all[iva], y_all[iva]
                         if not valid_split(
-                                ytr, yva, min_train=CFG.min_train_rows_inner, min_val=CFG.min_val_rows_inner,
-                                min_pos=CFG.min_pos_per_split_inner, min_neg=CFG.min_neg_per_split_inner,
-                                ratio_lo=CFG.ratio_lo_inner
+                                ytr, yva, min_train=CFG.cv.min_train_rows_inner, min_val=CFG.cv.min_val_rows_inner,
+                                min_pos=CFG.cv.min_pos_per_split_inner, min_neg=CFG.cv.min_neg_per_split_inner,
+                                ratio_lo=CFG.cv.ratio_lo_inner
                         ): continue
                         m = factory()
                         m.fit(Xtr, ytr)
