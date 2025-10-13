@@ -136,11 +136,6 @@ def write_fold_artifacts(prefix: str, fold: int, y_true: np.ndarray, y_prob: np.
 
     y_true = np.asarray(y_true).astype(int).ravel()
     y_prob = np.asarray(y_prob).astype(float).ravel()
-    # Drop any NaN/Inf to avoid flat/invalid curves
-    finite_mask = np.isfinite(y_true) & np.isfinite(y_prob)
-    if finite_mask.size and not np.all(finite_mask):
-        y_true = y_true[finite_mask]
-        y_prob = y_prob[finite_mask]
     if pos_rate is None:
         pos_rate = float(y_true.mean()) if y_true.size else float("nan")
 
@@ -182,14 +177,13 @@ def _build_macro_pr(prefix: str, outdir: Path) -> None:
         if {"recall", "precision"} <= set(df.columns):
             rec = df["recall"].to_numpy(float)
             pre = _precision_envelope(df["precision"].to_numpy(float))
-            pr = float(df["pos_rate"].iloc[0]) if "pos_rate" in df.columns and len(df) > 0 else (pre[-1] if pre.size else np.nan)
-            curves.append((rec, pre, pr))
+            curves.append((rec, pre))
     if not curves:
         return
     grid = np.linspace(0.0, 1.0, 200)
     mats = []
-    for rec, pre, pos_rate in curves:
-        right = pos_rate if pre.size else np.nan
+    for rec, pre in curves:
+        right = pre[-1] if pre.size else np.nan
         mats.append(np.interp(grid, rec, pre, left=1.0, right=right))
     macro_pre = np.nanmean(np.vstack(mats), axis=0)
     pd.DataFrame({"recall": grid, "precision": macro_pre}).to_csv(outdir / f"pr_macro_{prefix}.csv", index=False)

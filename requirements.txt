@@ -11,3 +11,6 @@ torch
 torch-geometric
 optuna
 pandas
+mlflow
+tensorboard
+optuna-dashboard
