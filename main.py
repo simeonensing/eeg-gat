@@ -126,7 +126,8 @@ SAVE_DIR = Path(CFG.data.save_dir)
 
 
 def main() -> None:
-    set_all_seeds(CFG.random_seed)
+    from utils.settings import RANDOM_SEED
+    set_all_seeds(RANDOM_SEED)
 
     print(
         "[INFO] Loading and preprocessing dataset (SHARED for both pipelines)..."
