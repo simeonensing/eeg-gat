@@ -28,7 +28,7 @@ def run_one_split_with_tracking(
     """Enhanced version that tracks training history."""
     if model_hparams is None:
         model_hparams = dict(hid=12, heads=2, out=12, dropout=0.3)
-    if seed is None: seed = CFG.random_seed
+    if seed is None: seed = CFG.cv.random_seed
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 

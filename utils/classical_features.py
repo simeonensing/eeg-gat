@@ -79,7 +79,7 @@ def _calibrated(est, cv=3, method="sigmoid"):
 
 
 def make_logreg(C=1.0, max_pca=15, seed=None):
-    seed = CFG.random_seed if seed is None else seed
+    seed = CFG.cv.random_seed if seed is None else seed
     return Pipeline([
         ("scaler", StandardScaler(with_mean=True, with_std=True)),
         ("pca", PCA(n_components=min(max_pca, 15), svd_solver='full', random_state=seed)),
@@ -90,7 +90,7 @@ def make_logreg(C=1.0, max_pca=15, seed=None):
 
 
 def make_svc(C=1.0, gamma="scale", max_pca=15, seed=None):
-    seed = CFG.random_seed if seed is None else seed
+    seed = CFG.cv.random_seed if seed is None else seed
     return Pipeline([
         ("scaler", StandardScaler(with_mean=True, with_std=True)),
         ("pca", PCA(n_components=min(max_pca, 15), svd_solver='full', random_state=seed)),
@@ -131,7 +131,7 @@ def expected_calibration_error(y_true: np.ndarray, y_prob: np.ndarray, n_bins: i
 
 
 def sanity_shuffle_ap(model_factory: Callable[[], object], Xtr, ytr, Xva, yva, n=3):
-    rng = np.random.default_rng(CFG.random_seed)
+    rng = np.random.default_rng(CFG.cv.random_seed)
     aps = []
     for _ in range(n):
         ytr_shuf = ytr.copy()

@@ -72,7 +72,7 @@ class SpectralConfig:
     s_max: float = 0.35
 
     # Sliding windows (seconds). Add more if you want multi-window evaluation.
-    window_grid: List[int] = field(default_factory=lambda: [4])
+    window_grid: list[int] = field(default_factory=lambda: [4])
 
     def to_dict(self) -> Dict[str, Any]:
         # Convert numpy arrays to lists for logging

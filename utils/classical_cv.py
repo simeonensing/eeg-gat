@@ -128,7 +128,7 @@ def classical_nested_cv(
                 except Exception as e:
                     raise TrialPruned(str(e))
 
-            study = optuna.create_study(direction="minimize", sampler=optuna.samplers.TPESampler(seed=CFG.random_seed))
+            study = optuna.create_study(direction="minimize", sampler=optuna.samplers.TPESampler(seed=CFG.cv.random_seed))
             study.optimize(objective, n_trials=15, show_progress_bar=False)
 
             # save all trials for this study (classical)

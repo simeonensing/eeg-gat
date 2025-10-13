@@ -44,8 +44,8 @@ def plan_outer(y_rows: np.ndarray, n_pairs: int, block_sizes_pairs: List[int],
                 blocks_rows, y_rows, n_splits=k_try, embargo_blocks=E,
                 validator=lambda ytr, yva: valid_split(
                     ytr, yva,
-                    min_train=CFG.min_train_rows, min_val=CFG.min_val_rows,
-                    min_pos=CFG.min_pos_per_split, min_neg=CFG.min_neg_per_split, ratio_lo=CFG.ratio_lo
+                    min_train=CFG.cv.min_train_rows, min_val=CFG.cv.min_val_rows,
+                    min_pos=CFG.cv.min_pos_per_split, min_neg=CFG.cv.min_neg_per_split, ratio_lo=CFG.cv.ratio_lo
                 )
             )
             if len(folds) == k_try: return folds, k_try, bs, E
@@ -60,7 +60,7 @@ def plan_inner(tr_idx_full: np.ndarray, y_all: np.ndarray, used_bs_pairs_outer: 
     n_pairs_tr = len(uniq_pairs)
     if n_pairs_tr < 4: return []
     bs_cands = sorted({used_bs_pairs_outer, max(4, used_bs_pairs_outer // 2), 6, 5, 4}, reverse=True)
-    E_cands = [CFG.embargo_blocks_inner, max(0, CFG.embargo_blocks_inner - 1), 0]
+    E_cands = [CFG.cv.embargo_blocks_inner, max(0, CFG.cv.embargo_blocks_inner - 1), 0]
     best_local: List[Tuple[np.ndarray, np.ndarray]] = []
     best_k = 0
 
@@ -70,14 +70,14 @@ def plan_inner(tr_idx_full: np.ndarray, y_all: np.ndarray, used_bs_pairs_outer: 
         blocks_rows = np.array([map_pair[pid] for pid in pair_ids_train], int)
         K = len(np.unique(blocks_rows))
         for E in E_cands:
-            for k_try in [CFG.inner_folds_target, CFG.inner_folds_target - 1, 2]:
+            for k_try in [CFG.cv.inner_folds_target, CFG.cv.inner_folds_target - 1, 2]:
                 if k_try < 2 or k_try > K: continue
                 folds = contiguous_purged_folds(
                     blocks_rows, y_all[tr_idx_full], n_splits=k_try, embargo_blocks=E,
                     validator=lambda ytr, yva: valid_split(
-                        ytr, yva, min_train=CFG.min_train_rows_inner, min_val=CFG.min_val_rows_inner,
-                        min_pos=CFG.min_pos_per_split_inner, min_neg=CFG.min_neg_per_split_inner,
-                        ratio_lo=CFG.ratio_lo_inner
+                        ytr, yva, min_train=CFG.cv.min_train_rows_inner, min_val=CFG.cv.min_val_rows_inner,
+                        min_pos=CFG.cv.min_pos_per_split_inner, min_neg=CFG.cv.min_neg_per_split_inner,
+                        ratio_lo=CFG.cv.ratio_lo_inner
                     )
                 )
                 if len(folds) == k_try:

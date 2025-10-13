@@ -192,7 +192,7 @@ def main() -> None:
     n_pairs_by_win: Dict[int, int] = {}
     usable_windows: List[int] = []
 
-    for win_sec in getattr(CFG.cv, "window_grid", [2, 3, 4]):
+    for win_sec in CFG.cv.window_grid:
         try:
             X_ref, y_ref, A_ref, n_pairs_ref = build_gwt_feature_table(
                 power_bef,
@@ -371,7 +371,7 @@ def main() -> None:
                                     max_epochs=CFG.train.max_epochs,
                                     patience=CFG.train.patience,
                                     batch_size=CFG.train.batch_size,
-                                    device=CFG.train.device,
+                                    device=(CFG.train.resolved_device() if callable(CFG.train.resolved_device) else CFG.train.resolved_device),
                                     model_hparams=dict(
                                         hid=hid,
                                         heads=heads,
@@ -410,7 +410,7 @@ def main() -> None:
                                 max_epochs=CFG.train.max_epochs,
                                 patience=CFG.train.patience,
                                 batch_size=CFG.train.batch_size,
-                                device=CFG.train.device,
+                                device=(CFG.train.resolved_device() if callable(CFG.train.resolved_device) else CFG.train.resolved_device),
                                 model_hparams=dict(
                                     hid=hid,
                                     heads=heads,
@@ -517,7 +517,7 @@ def main() -> None:
                     max_epochs=CFG.train.max_epochs,
                     patience=CFG.train.patience,
                     batch_size=CFG.train.batch_size,
-                    device=CFG.train.device,
+                    device=(CFG.train.resolved_device() if callable(CFG.train.resolved_device) else CFG.train.resolved_device),
                     model_hparams=dict(
                         hid=hid, heads=heads, out=out_dim, dropout=dropout
                     ),
