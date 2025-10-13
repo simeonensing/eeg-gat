@@ -180,7 +180,7 @@ def main() -> None:
     power_aft = full_power(data_aft_uV, sfreq, CFG.all_freqs, CFG.n_cycles)
 
     G, meyer, s_vals, degree_centrality, info_mne = build_graph_info(
-        raw_after, used_ch_names, CFG.data.montage_name, CFG.n_scales, CFG.s_max
+        raw_after, used_ch_names, CFG.data.montage_name, CFG.spectral.n_scales, CFG.spectral.s_max
     )
 
     feature_store: Dict[
