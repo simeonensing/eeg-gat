@@ -1,5 +1,9 @@
-
 from __future__ import annotations
+from utils.spectral_graph import gsp_filters
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from config import ExperimentConfig as Config
 from pathlib import Path
 from config import CFG, ExperimentConfig as Config
 try:
