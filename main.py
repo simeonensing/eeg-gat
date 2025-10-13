@@ -18,23 +18,36 @@ NEW:
 - Writes per-fold ROC/PR/predictions CSVs for plotting helpers
 - Creates aggregated PR macro, probabilities, and calibration CSVs
 - Writes topomap CSVs (values + consensus) matching plotting expectations
+
+Integrations:
+- Named Optuna studies (memory or storage-backed)
+- Optuna Dashboard compatibility (set CFG.optuna.storage_url)
+- MLflow tracking (parent run per outer fold; nested per trial)
+- Live TensorBoard tracking (per-trial metrics/params)
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Dict, List, Tuple
+from datetime import datetime
+import contextlib
+import os
 
 import numpy as np
 import pandas as pd
 
 # Matplotlib (headless)
 import matplotlib
-
-from utils.results_writer import build_macro_pr_csv, write_fold_artifacts, finalize_prefix, write_topomap_values_csv, \
-    write_topomap_consensus_csv
-
 matplotlib.use("Agg")
+
+from utils.results_writer import (
+    build_macro_pr_csv,
+    write_fold_artifacts,
+    finalize_prefix,
+    write_topomap_values_csv,
+    write_topomap_consensus_csv,
+)
 
 # --- Global font settings (Times-like) ---
 matplotlib.rcParams.update(
@@ -80,6 +93,21 @@ except Exception:
 import optuna
 from optuna.exceptions import TrialPruned
 
+# TensorBoard (Optuna integration)
+try:
+    from optuna.integration import TensorBoardCallback  # Optuna >=2.9
+except Exception:  # pragma: no cover
+    try:
+        from optuna.integration.tensorboard import TensorBoardCallback  # older layout
+    except Exception:
+        TensorBoardCallback = None
+
+# MLflow (optional)
+try:
+    import mlflow
+except Exception:  # pragma: no cover
+    mlflow = None  # allow running without mlflow installed
+
 # Internal modules
 from config import CFG
 from utils.blocking_splits import plan_inner, plan_outer
@@ -121,11 +149,52 @@ SAVE_DIR.mkdir(parents=True, exist_ok=True)
 (SAVE_DIR / "figures").mkdir(parents=True, exist_ok=True)  # ensure plot dir
 
 
-# ========================== GLOBAL TOGGLES (commented in settings) ==========================
-# USE_TEMP_SCALING = True
-# AVG_TWO_SEEDS_INNER = True
-# OUTER_SEEDS = 3
-# USE_AP_SELECTION = True
+# ---------------- Tracking resolver (Optuna / MLflow / TensorBoard) ----------------
+def _resolve_tracking():
+    """
+    Read optional settings from CFG to keep this file self-contained and backward compatible.
+
+    Expected (all optional):
+      CFG.optuna.storage_url: e.g. "sqlite:///optuna.db" or "journal://optuna.journal"
+      CFG.optuna.study_prefix: short slug added to study names (default "study")
+      CFG.optuna.n_trials: int, default 20
+      CFG.optuna.seed: int, default CFG.cv.random_seed
+
+      CFG.mlflow.tracking_uri: e.g. "file:./mlruns" or "http://localhost:5000"
+      CFG.mlflow.experiment_name: e.g. "EEG-GWT-GAT"
+      CFG.mlflow.tags: dict of extra tags (optional)
+
+      CFG.tensorboard.log_dir: root TB directory (default SAVE_DIR/'tb')
+    """
+    # -------- Optuna --------
+    optuna_cfg = getattr(CFG, "optuna", object())
+    storage_url = getattr(optuna_cfg, "storage_url", None)  # None => in-memory
+    study_prefix = getattr(optuna_cfg, "study_prefix", "study")
+    n_trials = getattr(optuna_cfg, "n_trials", 20)
+    seed = getattr(optuna_cfg, "seed", getattr(CFG.cv, "random_seed", 42))
+
+    # -------- MLflow --------
+    mlflow_cfg = getattr(CFG, "mlflow", object())
+    ml_tracking = getattr(mlflow_cfg, "tracking_uri", None)
+    ml_experiment = getattr(mlflow_cfg, "experiment_name", "EEG-GWT-GAT")
+    ml_tags = getattr(mlflow_cfg, "tags", {}) or {}
+
+    # -------- TensorBoard --------
+    tb_cfg = getattr(CFG, "tensorboard", object())
+    tb_root = Path(getattr(tb_cfg, "log_dir", SAVE_DIR / "tb")).expanduser().resolve()
+    tb_root.mkdir(parents=True, exist_ok=True)
+
+    return {
+        "storage_url": storage_url,
+        "study_prefix": study_prefix,
+        "n_trials": int(n_trials),
+        "seed": int(seed),
+        "ml_tracking": ml_tracking,
+        "ml_experiment": ml_experiment,
+        "ml_tags": dict(ml_tags),
+        "tb_root": tb_root,
+    }
+
 
 def main() -> None:
     from utils.settings import RANDOM_SEED
@@ -247,35 +316,102 @@ def main() -> None:
                 print("  [Graph] WARN: Not enough valid inner folds; skipping this outer fold.")
                 continue
 
+            # ---------- Integrations (Optuna/MLflow/TensorBoard) ----------
+            tracking = _resolve_tracking()
+
+            # Name the study deterministically (works in-memory AND with dashboard storages)
+            time_tag = datetime.now().strftime("%Y%m%d-%H%M%S")
+            study_name = f"{tracking['study_prefix']}_graph_win{win_sec}_fold{ofold+1}_{time_tag}"
+
+            # Optional: MLflow setup (parent run)
+            active_mlflow_parent = None
+            if tracking["ml_tracking"] and mlflow is not None:
+                mlflow.set_tracking_uri(tracking["ml_tracking"])
+                mlflow.set_experiment(tracking["ml_experiment"])
+                active_mlflow_parent = mlflow.start_run(run_name=study_name)
+                mlflow.set_tags({
+                    "pipeline": "graph",
+                    "window_s": win_sec,
+                    "outer_fold": ofold + 1,
+                    **tracking["ml_tags"],
+                })
+
+            # TensorBoard callback (per-trial)
+            tb_cb = None
+            tb_dir = tracking["tb_root"] / f"{study_name}"
+            if TensorBoardCallback is not None:
+                tb_cb = TensorBoardCallback(str(tb_dir), metric_name="objective")
+
+            # Objective (with manual nested MLflow run per trial)
             def objective(trial: optuna.Trial) -> float:
-                try:
-                    band_name = trial.suggest_categorical("band", CFG.band_order)
-                    s_idx     = trial.suggest_categorical("s_idx", list(range(len(s_vals))))
-                    hid       = trial.suggest_categorical("hid", [8, 12, 16])
-                    heads     = 2
-                    out_dim   = trial.suggest_categorical("out", [8, 12])
-                    dropout   = trial.suggest_float("dropout", 0.28, 0.38)
+                if mlflow is not None and tracking["ml_tracking"]:
+                    child_ctx = mlflow.start_run(run_name=f"trial-{trial.number}", nested=True)
+                else:
+                    child_ctx = contextlib.nullcontext()
 
-                    X_all, y_all, A, _ = feature_store[(band_name, s_idx, win_sec)]
-                    scores: List[float] = []
+                with child_ctx:
+                    try:
+                        # Annotate trial for exports/dashboards
+                        trial.set_user_attr("window_s", win_sec)
+                        trial.set_user_attr("outer_fold", ofold + 1)
 
-                    for itr, iva in inner_folds:
-                        Xtr, ytr = X_all[itr], y_all[itr]
-                        Xva, yva = X_all[iva], y_all[iva]
+                        band_name = trial.suggest_categorical("band", CFG.band_order)
+                        s_idx     = trial.suggest_categorical("s_idx", list(range(len(s_vals))))
+                        hid       = trial.suggest_categorical("hid", [8, 12, 16])
+                        heads     = 2
+                        out_dim   = trial.suggest_categorical("out", [8, 12])
+                        dropout   = trial.suggest_float("dropout", 0.28, 0.38)
 
-                        if not valid_split(
-                            ytr, yva,
-                            min_train=CFG.cv.min_train_rows_inner,
-                            min_val=CFG.cv.min_val_rows_inner,
-                            min_pos=CFG.cv.min_pos_per_split_inner,
-                            min_neg=CFG.cv.min_neg_per_split_inner,
-                            ratio_lo=CFG.cv.ratio_lo_inner,
-                        ):
-                            continue
+                        # Log params early so they appear even if pruned
+                        if mlflow is not None and tracking["ml_tracking"]:
+                            mlflow.log_params({
+                                "band": band_name,
+                                "s_idx": s_idx,
+                                "hid": hid,
+                                "heads": heads,
+                                "out": out_dim,
+                                "dropout": dropout,
+                            })
 
-                        if AVG_TWO_SEEDS_INNER:
-                            vals: List[float] = []
-                            for sd in [CFG.cv.random_seed, CFG.cv.random_seed + 1]:
+                        X_all, y_all, A, _ = feature_store[(band_name, s_idx, win_sec)]
+                        scores: List[float] = []
+
+                        for itr, iva in inner_folds:
+                            Xtr, ytr = X_all[itr], y_all[itr]
+                            Xva, yva = X_all[iva], y_all[iva]
+
+                            if not valid_split(
+                                ytr, yva,
+                                min_train=CFG.cv.min_train_rows_inner,
+                                min_val=CFG.cv.min_val_rows_inner,
+                                min_pos=CFG.cv.min_pos_per_split_inner,
+                                min_neg=CFG.cv.min_neg_per_split_inner,
+                                ratio_lo=CFG.cv.ratio_lo_inner,
+                            ):
+                                continue
+
+                            if AVG_TWO_SEEDS_INNER:
+                                vals: List[float] = []
+                                for sd in [CFG.cv.random_seed, CFG.cv.random_seed + 1]:
+                                    res = run_one_split_with_tracking(
+                                        Xtr, ytr, Xva, yva, A,
+                                        lr=CFG.train.lr, weight_decay=CFG.train.weight_decay,
+                                        max_epochs=CFG.train.max_epochs, patience=CFG.train.patience,
+                                        batch_size=CFG.train.batch_size,
+                                        device=(CFG.train.resolved_device() if callable(CFG.train.resolved_device) else CFG.train.resolved_device),
+                                        model_hparams=dict(hid=hid, heads=heads, out=out_dim, dropout=dropout),
+                                        seed=sd,
+                                    )
+                                    p = 1.0 / (1.0 + np.exp(-res["val"]["logits"]))
+                                    if USE_AP_SELECTION and len(np.unique(yva)) > 1:
+                                        vals.append(average_precision_score(yva, p))
+                                    else:
+                                        eps = 1e-7
+                                        bce = -np.mean(yva * np.log(p + eps) + (1 - yva) * np.log(1 - p + eps))
+                                        vals.append(-bce)
+                                if vals:
+                                    scores.append(-float(np.mean(vals)))
+                            else:
                                 res = run_one_split_with_tracking(
                                     Xtr, ytr, Xva, yva, A,
                                     lr=CFG.train.lr, weight_decay=CFG.train.weight_decay,
@@ -283,61 +419,100 @@ def main() -> None:
                                     batch_size=CFG.train.batch_size,
                                     device=(CFG.train.resolved_device() if callable(CFG.train.resolved_device) else CFG.train.resolved_device),
                                     model_hparams=dict(hid=hid, heads=heads, out=out_dim, dropout=dropout),
-                                    seed=sd,
                                 )
                                 p = 1.0 / (1.0 + np.exp(-res["val"]["logits"]))
                                 if USE_AP_SELECTION and len(np.unique(yva)) > 1:
-                                    vals.append(average_precision_score(yva, p))
+                                    scores.append(-average_precision_score(yva, p))
                                 else:
                                     eps = 1e-7
                                     bce = -np.mean(yva * np.log(p + eps) + (1 - yva) * np.log(1 - p + eps))
-                                    vals.append(-bce)
-                            if vals:
-                                scores.append(-float(np.mean(vals)))
-                        else:
-                            res = run_one_split_with_tracking(
-                                Xtr, ytr, Xva, yva, A,
-                                lr=CFG.train.lr, weight_decay=CFG.train.weight_decay,
-                                max_epochs=CFG.train.max_epochs, patience=CFG.train.patience,
-                                batch_size=CFG.train.batch_size,
-                                device=(CFG.train.resolved_device() if callable(CFG.train.resolved_device) else CFG.train.resolved_device),
-                                model_hparams=dict(hid=hid, heads=heads, out=out_dim, dropout=dropout),
-                            )
-                            p = 1.0 / (1.0 + np.exp(-res["val"]["logits"]))
-                            if USE_AP_SELECTION and len(np.unique(yva)) > 1:
-                                scores.append(-average_precision_score(yva, p))
-                            else:
-                                eps = 1e-7
-                                bce = -np.mean(yva * np.log(p + eps) + (1 - yva) * np.log(1 - p + eps))
-                                scores.append(bce)
+                                    scores.append(bce)
 
-                    if not scores:
-                        raise TrialPruned("No valid inner splits for this configuration.")
-                    return float(np.mean(scores))
-                except TrialPruned:
-                    raise
-                except Exception as e:  # noqa: BLE001
-                    raise TrialPruned(str(e))
+                        if not scores:
+                            raise TrialPruned("No valid inner splits for this configuration.")
 
-            study = optuna.create_study(direction="minimize",
-                                        sampler=optuna.samplers.TPESampler(seed=CFG.cv.random_seed))
-            study.optimize(objective, n_trials=20, show_progress_bar=False)
+                        value = float(np.mean(scores))
+                        # Report once so TB sees the metric even for fast objectives
+                        trial.report(value, step=0)
+
+                        if mlflow is not None and tracking["ml_tracking"]:
+                            mlflow.log_metric("objective", value)
+
+                        return value
+
+                    except TrialPruned:
+                        raise
+                    except Exception as e:  # noqa: BLE001
+                        # Optional: expose error in MLflow for quick triage
+                        if mlflow is not None and tracking["ml_tracking"]:
+                            mlflow.set_tag("error", str(e))
+                        # Fail-safe prune to keep study moving
+                        raise TrialPruned(str(e))
+
+            # Create study (named). Dashboard-ready if storage is set.
+            sampler = optuna.samplers.TPESampler(seed=tracking["seed"])
+            if tracking["storage_url"]:
+                study = optuna.create_study(
+                    direction="minimize",
+                    sampler=sampler,
+                    storage=tracking["storage_url"],
+                    study_name=study_name,
+                    load_if_exists=True,
+                )
+                print("[INFO] Optuna storage:", tracking["storage_url"])
+                print("[INFO] Launch dashboard with:")
+                print(f"       optuna-dashboard \"{tracking['storage_url']}\"")
+            else:
+                # In-memory (still named)
+                study = optuna.create_study(
+                    direction="minimize",
+                    sampler=sampler,
+                    study_name=study_name,
+                )
+
+            # Attach metadata (visible in dashboard / exports)
+            study.set_user_attr("pipeline", "graph")
+            study.set_user_attr("window_s", win_sec)
+            study.set_user_attr("outer_fold", ofold + 1)
+
+            callbacks = []
+            if tb_cb is not None:
+                callbacks.append(tb_cb)
+
+            try:
+                study.optimize(
+                    objective,
+                    n_trials=tracking["n_trials"],
+                    callbacks=callbacks if callbacks else None,
+                    show_progress_bar=False,
+                )
+            finally:
+                if active_mlflow_parent is not None and mlflow is not None:
+                    mlflow.end_run()
 
             # save all trials for this study (graph)
             try:
-                df_trials = study.trials_dataframe(attrs=("number", "value", "state", "params", "user_attrs", "system_attrs"))
+                df_trials = study.trials_dataframe(
+                    attrs=("number", "value", "state", "params", "user_attrs", "system_attrs")
+                )
             except TypeError:
                 df_trials = study.trials_dataframe()
             df_trials.insert(0, "pipeline", "graph")
             df_trials.insert(1, "window_s", win_sec)
             df_trials.insert(2, "outer_fold", ofold + 1)
+            df_trials.insert(3, "study_name", study.study_name)
             trial_path = SAVE_DIR / f"optuna_graph_win{win_sec}_fold{ofold + 1}.csv"
             df_trials.to_csv(trial_path, index=False)
             print(f"[Saved] {trial_path}")
 
             best = study.best_trial
-            best_row = {"pipeline": "graph", "window_s": win_sec, "outer_fold": ofold + 1,
-                        "objective": float(best.value), **{f"param_{k}": v for k, v in best.params.items()}}
+            best_row = {
+                "pipeline": "graph",
+                "window_s": win_sec,
+                "outer_fold": ofold + 1,
+                "objective": float(best.value),
+                **{f"param_{k}": v for k, v in best.params.items()},
+            }
             optuna_best_rows.append(best_row)
             optuna_all_trials_rows.append(df_trials)
 
@@ -451,7 +626,6 @@ def main() -> None:
         write_topomap_values_csv(importance_dict_c, used_ch_names, "classical", SAVE_DIR)
         write_topomap_consensus_csv(importance_dict_c, used_ch_names, "classical", SAVE_DIR)
 
-
     # ---- per-fold artifacts for classical ----
     for i, pf in enumerate(per_fold_preds_classical, 1):
         yv = pf.get("ytrue")
@@ -463,13 +637,6 @@ def main() -> None:
         else:
             fpr, tpr = np.array([0, 1]), np.array([0, 1])
         write_fold_artifacts(prefix="classical", fold=i, y_true=yv, y_prob=pv, outdir=SAVE_DIR, fpr=fpr, tpr=tpr)
-
-    # If you later produce classical XAI arrays, populate xai_results_classical and these will write CSVs:
-    if xai_results_classical:
-        all_occ_c = np.concatenate([r["occlusion"] for r in xai_results_classical], axis=0)
-        importance_dict_c = {"Occlusion": all_occ_c}
-        write_topomap_values_csv(importance_dict_c, used_ch_names, "classical", SAVE_DIR)
-        write_topomap_consensus_csv(importance_dict_c, used_ch_names, "classical", SAVE_DIR)
 
     # ---- Summaries ----
     best_params_class: Dict[str, float | int | str] = {}
