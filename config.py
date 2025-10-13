@@ -1,7 +1,7 @@
 # config.py
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Dict, Tuple, List, Any
 import json

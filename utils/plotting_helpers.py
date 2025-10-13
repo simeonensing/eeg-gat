@@ -1,3 +1,6 @@
+from pathlib import Path
+from config import CFG
+SAVE_DIR = Path(CFG.data.save_dir)
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
@@ -22,15 +25,13 @@ Notes:
 - Saves vector PDFs (editable text) without tight bbox. Margins are tuned to avoid cropping.
 """
 
-from pathlib import Path
-import numpy as np
-import pandas as pd
-import re, textwrap
-import warnings
+
+import textwrap
+
 
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+
 from matplotlib.ticker import FuncFormatter, MaxNLocator
 from matplotlib.gridspec import GridSpec
 
@@ -58,7 +59,6 @@ matplotlib.rcParams.update({
     "legend.fontsize": 7,
 })
 
-SAVE_DIR = Path("../results")
 FIG_DIR = SAVE_DIR / "figures"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 

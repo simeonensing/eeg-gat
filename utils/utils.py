@@ -1,3 +1,6 @@
+from config import CFG
+SAVE_DIR = Path(CFG.data.save_dir)
+from pathlib import Path
 from __future__ import annotations
 
 import hashlib

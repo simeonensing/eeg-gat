@@ -1,3 +1,9 @@
+try:
+    from pygsp import graphs, filters as gsp_filters
+except Exception:
+    graphs = None
+    gsp_filters = None
+
 from __future__ import annotations
 
 import mne
