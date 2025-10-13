@@ -1,7 +1,13 @@
-from config import CFG
-SAVE_DIR = Path(CFG.data.save_dir)
-from pathlib import Path
+
 from __future__ import annotations
+from pathlib import Path
+from config import CFG, ExperimentConfig as Config
+try:
+    from pygsp import graphs, filters as gsp_filters
+except Exception:
+    graphs = None
+    gsp_filters = None
+SAVE_DIR = Path(CFG.data.save_dir)
 
 import hashlib
 import platform
@@ -29,7 +35,6 @@ from utils.settings import (
     USE_LOGIT_DELTAS_CLASSICAL,
 )
 
-
 def write_reproducibility_csv(
     cfg: Config,
     used_ch_names: List[str],
@@ -45,49 +50,49 @@ def write_reproducibility_csv(
     row = {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         # dataset
-        "pre_active_path": cfg.pre_active_path,
-        "pre_active_sha256": _sha256_file(cfg.pre_active_path),
-        "post_sham_path": cfg.post_sham_path,
-        "post_sham_sha256": _sha256_file(cfg.post_sham_path),
-        "post_active_path": cfg.post_active_path,
-        "post_active_sha256": _sha256_file(cfg.post_active_path),
-        "montage_name": cfg.montage_name,
+        "pre_active_path": cfg.data.pre_active_path,
+        "pre_active_sha256": _sha256_file(cfg.data.pre_active_path),
+        "post_sham_path": cfg.data.post_sham_path,
+        "post_sham_sha256": _sha256_file(cfg.data.post_sham_path),
+        "post_active_path": cfg.data.post_active_path,
+        "post_active_sha256": _sha256_file(cfg.data.post_active_path),
+        "montage_name": cfg.data.montage_name,
         "kept_channels": ";".join(used_ch_names),
         "sfreq_hz": sfreq,
         # spectral & GWT
         "bands": ";".join([f"{k}:[{v[0]}-{v[1]}]" for k, v in cfg.bands.items()]),
         "band_order": ";".join(cfg.band_order),
-        "n_scales": cfg.n_scales,
-        "s_max": cfg.s_max,
+        "n_scales": cfg.spectral.n_scales,
+        "s_max": cfg.spectral.s_max,
         "n_freqs": int(np.asarray(cfg.all_freqs).size),
         # windows & CV
-        "window_grid_s": ";".join(map(str, cfg.window_grid)),
-        "outer_folds_target": cfg.outer_folds_target,
-        "inner_folds_target": cfg.inner_folds_target,
-        "random_seed": cfg.random_seed,
+        "window_grid_s": ";".join(map(str, cfg.cv.window_grid)),
+        "outer_folds_target": cfg.cv.outer_folds_target,
+        "inner_folds_target": cfg.cv.inner_folds_target,
+        "random_seed": cfg.cv.random_seed,
         # training
-        "max_epochs": cfg.max_epochs,
-        "batch_size": cfg.batch_size,
-        "lr": cfg.lr,
-        "weight_decay": cfg.weight_decay,
-        "patience": cfg.patience,
-        "device": cfg.device,
+        "max_epochs": cfg.train.max_epochs,
+        "batch_size": cfg.train.batch_size,
+        "lr": cfg.train.lr,
+        "weight_decay": cfg.train.weight_decay,
+        "patience": cfg.train.patience,
+        "device": cfg.train.device,
         # split feasibility thresholds (outer/inner)
-        "outer_block_size_pairs_default": cfg.block_size_pairs_default,
-        "outer_embargo_blocks_default": cfg.embargo_blocks_outer_default,
-        "outer_min_pos": cfg.min_pos_per_split,
-        "outer_min_neg": cfg.min_neg_per_split,
-        "outer_min_train": cfg.min_train_rows,
-        "outer_min_val": cfg.min_val_rows,
-        "outer_ratio_lo": cfg.ratio_lo,
-        "inner_embargo_blocks": cfg.embargo_blocks_inner,
-        "inner_min_pos": cfg.min_pos_per_split_inner,
-        "inner_min_neg": cfg.min_neg_per_split_inner,
-        "inner_min_train": cfg.min_train_rows_inner,
-        "inner_min_val": cfg.min_val_rows_inner,
-        "inner_ratio_lo": cfg.ratio_lo_inner,
+        "outer_block_size_pairs_default": cfg.cv.block_size_pairs_default,
+        "outer_embargo_blocks_default": cfg.cv.embargo_blocks_outer_default,
+        "outer_min_pos": cfg.cv.min_pos_per_split,
+        "outer_min_neg": cfg.cv.min_neg_per_split,
+        "outer_min_train": cfg.cv.min_train_rows,
+        "outer_min_val": cfg.cv.min_val_rows,
+        "outer_ratio_lo": cfg.cv.ratio_lo,
+        "inner_embargo_blocks": cfg.cv.embargo_blocks_inner,
+        "inner_min_pos": cfg.cv.min_pos_per_split_inner,
+        "inner_min_neg": cfg.cv.min_neg_per_split_inner,
+        "inner_min_train": cfg.cv.min_train_rows_inner,
+        "inner_min_val": cfg.cv.min_val_rows_inner,
+        "inner_ratio_lo": cfg.cv.ratio_lo_inner,
         # purge
-        "purge_pairs": cfg.purge_pairs,
+        "purge_pairs": cfg.cv.purge_pairs,
         # toggles
         "USE_TEMP_SCALING": USE_TEMP_SCALING,
         "AVG_TWO_SEEDS_INNER": AVG_TWO_SEEDS_INNER,

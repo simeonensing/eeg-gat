@@ -5,6 +5,8 @@ except Exception:
     gsp_filters = None
 
 from __future__ import annotations
+from pathlib import Path
+from config import CFG
 
 import mne
 import numpy as np
