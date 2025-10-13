@@ -3,7 +3,9 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from main import SAVE_DIR
+from pathlib import Path
+from config import CFG
+SAVE_DIR = Path(CFG.data.save_dir)
 
 
 
