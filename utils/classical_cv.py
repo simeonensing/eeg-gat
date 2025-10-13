@@ -195,6 +195,6 @@ def classical_nested_cv(
     if xai_results:
         all_occlusion = np.concatenate([r['occlusion'] for r in xai_results], axis=0)
         importance_dict = {'Occlusion': all_occlusion}
-        create_xai_summary_table(importance_dict, ch_names, "classical")
+        create_xai_summary_table(importance_dict, ch_names, "classical", SAVE_DIR)
 
     return per_fold_preds, per_fold_metrics, fold_histories

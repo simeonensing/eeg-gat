@@ -636,7 +636,7 @@ def main() -> None:
             "Occlusion": all_occlusion_g,
             "Gradient_x_Input": all_grad_g,
         }
-        create_xai_summary_table(importance_dict_g, used_ch_names, "gwt_gat")
+        create_xai_summary_table(importance_dict_g, used_ch_names, "gwt_gat", SAVE_DIR)
 
     print("\n" + "=" * 80)
     print("CLASSICAL PIPELINE (DSP + ML) WITH XAI")

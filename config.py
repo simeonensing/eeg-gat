@@ -1,7 +1,7 @@
 # config.py
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Tuple, List, Any
 import json
@@ -84,6 +84,7 @@ class SpectralConfig:
 
 @dataclass
 class CVConfig:
+    window_grid: list[int] = field(default_factory=lambda: [4])
     # Targets; planner will degrade gracefully if infeasible
     outer_folds_target: int = 5
     inner_folds_target: int = 3

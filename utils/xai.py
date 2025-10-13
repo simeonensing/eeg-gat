@@ -6,6 +6,19 @@ import mne
 import numpy as np
 import pandas as pd
 import torch
+
+def _resolve_device(device):
+    if callable(device):
+        device = device()
+    import torch
+    if isinstance(device, str):
+        if device == "auto":
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        return torch.device(device)
+    if isinstance(device, torch.device):
+        return device
+    return torch.device("cpu")
+
 from matplotlib import pyplot as plt
 from mne.viz import plot_topomap
 from utils.settings import (
@@ -28,6 +41,7 @@ def _to_logit(p: np.ndarray, eps: float = 1e-7) -> np.ndarray:
 
 
 def occlusion_sensitivity_gat(model, X_val, A, device, occlusion_size: int = 1):
+    device = _resolve_device(device)
     """
     Channel-wise occlusion sensitivity for the GAT model.
 
@@ -65,6 +79,7 @@ def occlusion_sensitivity_gat(model, X_val, A, device, occlusion_size: int = 1):
 
 
 def gradient_input_gat(model, X_val, A, device):
+    device = _resolve_device(device)
     """
     Gradient × Input attribution for the GAT model.
 
@@ -137,7 +152,7 @@ def occlusion_sensitivity_classical(model, X_val, n_channels: int, n_bands: int)
 
     return importance
 
-def create_xai_summary_table(importance_dict, ch_names, save_prefix):
+def create_xai_summary_table(importance_dict, ch_names, save_prefix, save_dir):
     """Create XAI summary table showing channel importance."""
     rows = []
 
@@ -156,7 +171,7 @@ def create_xai_summary_table(importance_dict, ch_names, save_prefix):
     df = pd.DataFrame(rows)
     pivot_mean = df.pivot(index='Channel', columns='Method', values='Mean_Importance')
 
-    save_path = SAVE_DIR / f"{save_prefix}_xai_table.csv"
+    save_path = Path(save_dir) / f"{save_prefix}_xai_table.csv"
     pivot_mean.to_csv(save_path)
     print(f"[Saved] {save_path}")
 
