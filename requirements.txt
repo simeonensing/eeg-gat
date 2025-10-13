@@ -1,0 +1,12 @@
+mne
+matplotlib
+numpy
+Pillow
+mne_connectivity
+pygsp
+scikit-learn
+pathlib
+scipy
+torch
+torch-geometric
+optuna
