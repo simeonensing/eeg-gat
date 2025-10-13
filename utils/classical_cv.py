@@ -10,7 +10,10 @@ from optuna import TrialPruned
 from sklearn.metrics import average_precision_score, roc_curve, auc, precision_recall_curve
 
 from config import CFG
-from main import USE_AP_SELECTION, SAVE_DIR
+from pathlib import Path
+from config import CFG
+from utils.settings import USE_AP_SELECTION
+SAVE_DIR = Path(CFG.data.save_dir)
 from utils.blocking_splits import plan_inner
 from utils.classical_features import build_classical_feature_table_baseline_norm, make_logreg, make_svc, \
     sanity_shuffle_ap, eval_sklearn_model
