@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent
 # config.py
@@ -161,6 +162,7 @@ class ToggleConfig:
         return asdict(self)
 
 
+# (kept for backwards-compatibility; you can still use these)
 @dataclass
 class TrackingConfig:
     # Turn on/off trackers
@@ -182,6 +184,39 @@ class TrackingConfig:
         return asdict(self)
 
 
+# ===== New sections used by amended script =====
+@dataclass
+class OptunaConfig:
+    # None => in-memory studies (still named). Set e.g. "sqlite:///optuna.db" to enable dashboard.
+    storage_url: str | None = None
+    study_prefix: str = "eeg"
+    n_trials: int = 32
+    seed: int = 42
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class MLflowSection:
+    # If None, MLflow uses env/defaults. Examples: "file:./mlruns" or "http://localhost:5000"
+    tracking_uri: str | None = None
+    experiment_name: str = "eeg-gwtgat-vs-classical"
+    tags: Dict[str, str] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class TensorBoardSection:
+    # Root directory for TensorBoard logs
+    log_dir: str = "tb"
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
 @dataclass
 class ExperimentConfig:
     data: DataConfig = field(default_factory=DataConfig)
@@ -191,6 +226,11 @@ class ExperimentConfig:
     toggles: ToggleConfig = field(default_factory=ToggleConfig)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
 
+    # NEW: sections the amended main script expects
+    optuna: OptunaConfig = field(default_factory=OptunaConfig)
+    mlflow: MLflowSection = field(default_factory=MLflowSection)
+    tensorboard: TensorBoardSection = field(default_factory=TensorBoardSection)
+
     # --- Helpers ---
     @classmethod
     def from_yaml(cls, path: str) -> "ExperimentConfig":
@@ -198,6 +238,7 @@ class ExperimentConfig:
             raise RuntimeError("PyYAML is not installed. `pip install pyyaml` or remove YAML usage.")
         with open(path, "r") as f:
             raw = yaml.safe_load(f) or {}
+
         # Allow partial trees; dataclasses handle defaults
         def merge(dc_cls, src):
             if src is None:
@@ -205,6 +246,7 @@ class ExperimentConfig:
             if isinstance(src, dict):
                 return dc_cls(**src)
             raise TypeError(f"Invalid section for {dc_cls.__name__}: {type(src)}")
+
         return cls(
             data=merge(DataConfig, raw.get("data")),
             spectral=merge(SpectralConfig, raw.get("spectral")),
@@ -212,6 +254,9 @@ class ExperimentConfig:
             train=merge(TrainConfig, raw.get("train")),
             toggles=merge(ToggleConfig, raw.get("toggles")),
             tracking=merge(TrackingConfig, raw.get("tracking")),
+            optuna=merge(OptunaConfig, raw.get("optuna")),
+            mlflow=merge(MLflowSection, raw.get("mlflow")),
+            tensorboard=merge(TensorBoardSection, raw.get("tensorboard")),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -222,6 +267,10 @@ class ExperimentConfig:
             "train": self.train.to_dict(),
             "toggles": self.toggles.to_dict(),
             "tracking": self.tracking.to_dict(),
+            # NEW:
+            "optuna": self.optuna.to_dict(),
+            "mlflow": self.mlflow.to_dict(),
+            "tensorboard": self.tensorboard.to_dict(),
         }
 
     def to_json(self, path: str) -> None:
@@ -276,3 +325,13 @@ def load_cfg(yaml_path: str | None = None) -> ExperimentConfig:
 
 # Public singleton you can import everywhere:
 CFG: ExperimentConfig = load_cfg()
+# Absolute paths for your machine
+CFG.optuna.storage_url = "sqlite:////Scratch/sensing/proof_of_concept/optuna.db"
+CFG.mlflow.tracking_uri = "file:/Scratch/sensing/proof_of_concept/mlruns"
+CFG.mlflow.experiment_name = "eeg-gwtgat-vs-classical"
+CFG.tensorboard.log_dir = "/Scratch/sensing/proof_of_concept/results/tb"
+
+
+
+# TensorBoard log dir override
+CFG.tensorboard.log_dir = "/Scratch/sensing/proof_of_concept/results/tb"
