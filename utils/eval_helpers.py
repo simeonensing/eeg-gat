@@ -8,6 +8,68 @@ from sklearn.preprocessing import StandardScaler
 
 
 
+from pathlib import Path
+import numpy as np
+import pandas as pd
+from sklearn.metrics import roc_curve, precision_recall_curve
+
+def write_fold_artifacts(prefix: str, fold: int, y_true, y_score, outdir: Path):
+    outdir.mkdir(parents=True, exist_ok=True)
+    y_true = np.asarray(y_true).astype(int)
+    y_score = np.asarray(y_score).astype(float)
+
+    # --- ROC ---
+    fpr, tpr, _ = roc_curve(y_true, y_score)
+    pd.DataFrame({"fpr": fpr, "tpr": tpr}).to_csv(
+        outdir / f"roc_{prefix}_fold{fold}.csv", index=False
+    )
+
+    # --- PR ---
+    rec, pre, _ = precision_recall_curve(y_true, y_score)
+    pos_rate = float(np.mean(y_true == 1)) if y_true.size else np.nan
+    pd.DataFrame({"recall": rec, "precision": pre, "pos_rate": pos_rate}).to_csv(
+        outdir / f"pr_{prefix}_fold{fold}.csv", index=False
+    )
+
+    # --- Per-fold predictions (for confusion matrices) ---
+    pd.DataFrame({"y_true": y_true, "prob": y_score, "fold": fold}).to_csv(
+        outdir / f"predictions_{prefix}_fold{fold}.csv", index=False
+    )
+
+def finalize_after_cv(prefix: str, outdir: Path):
+    """Build the aggregated files your plotters use."""
+    # Concatenate per-fold predictions -> predictions_{prefix}.csv
+    preds = []
+    for p in sorted(outdir.glob(f"predictions_{prefix}_fold*.csv")):
+        preds.append(pd.read_csv(p))
+    if preds:
+        pd.concat(preds, ignore_index=True).to_csv(
+            outdir / f"predictions_{prefix}.csv", index=False
+        )
+
+    # Build a macro PR curve if you want the “Average” trace in PR plots
+    # (simple interpolation-based average)
+    import numpy as np
+    curves = []
+    for p in sorted(outdir.glob(f"pr_{prefix}_fold*.csv")):
+        df = pd.read_csv(p)
+        if {"recall","precision"} <= set(df.columns):
+            curves.append((df["recall"].to_numpy(float), df["precision"].to_numpy(float)))
+    if curves:
+        # Interpolate precision on a common recall grid, then average
+        grid = np.linspace(0.0, 1.0, 200)
+        precs = []
+        for rec, pre in curves:
+            # make precision a non-increasing envelope for consistency
+            pre = np.maximum.accumulate(pre[::-1])[::-1]
+            precs.append(np.interp(grid, rec, pre, left=1.0, right=pre[-1] if pre.size else np.nan))
+        macro_pre = np.nanmean(np.vstack(precs), axis=0)
+        pd.DataFrame({"recall": grid, "precision": macro_pre}).to_csv(
+            outdir / f"pr_macro_{prefix}.csv", index=False
+        )
+
+
+
 
 def ensure_X3D(X: torch.Tensor) -> torch.Tensor:
     if X.dim() == 2:  return X.unsqueeze(-1)
