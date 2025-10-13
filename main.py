@@ -192,7 +192,7 @@ def main() -> None:
     n_pairs_by_win: Dict[int, int] = {}
     usable_windows: List[int] = []
 
-    for win_sec in CFG.window_grid:
+    for win_sec in getattr(CFG.cv, "window_grid", [2, 3, 4]):
         try:
             X_ref, y_ref, A_ref, n_pairs_ref = build_gwt_feature_table(
                 power_bef,
@@ -215,10 +215,10 @@ def main() -> None:
 
         block_size_candidates = sorted(
             {
-                CFG.block_size_pairs_default,
-                max(6, CFG.block_size_pairs_default - 2),
-                max(6, CFG.block_size_pairs_default - 4),
-                max(6, CFG.block_size_pairs_default // 2),
+                CFG.cv.block_size_pairs_default,
+                max(6, CFG.cv.block_size_pairs_default - 2),
+                max(6, CFG.cv.block_size_pairs_default - 4),
+                max(6, CFG.cv.block_size_pairs_default // 2),
                 12,
                 10,
                 8,
@@ -227,9 +227,9 @@ def main() -> None:
         )
         embargo_candidates = sorted(
             {
-                CFG.embargo_blocks_outer_default,
-                max(0, CFG.embargo_blocks_outer_default - 1),
-                max(0, CFG.embargo_blocks_outer_default - 2),
+                CFG.cv.embargo_blocks_outer_default,
+                max(0, CFG.cv.embargo_blocks_outer_default - 1),
+                max(0, CFG.cv.embargo_blocks_outer_default - 2),
                 1,
                 0,
             },
@@ -241,7 +241,7 @@ def main() -> None:
             n_pairs=n_pairs_ref,
             block_sizes_pairs=block_size_candidates,
             embargoes=embargo_candidates,
-            K_target=CFG.outer_folds_target,
+            K_target=CFG.cv.outer_folds_target,
         )
         if used_K < 2:
             print(
@@ -308,7 +308,7 @@ def main() -> None:
 
         for ofold in range(used_K):
             tr_idx, va_idx = folds[ofold]
-            tr_idx = hard_purge_train_rows(tr_idx, va_idx, purge_pairs=CFG.purge_pairs)
+            tr_idx = hard_purge_train_rows(tr_idx, va_idx, purge_pairs=CFG.cv.purge_pairs)
 
             y_tr_full, y_va_full = y_any[tr_idx], y_any[va_idx]
             print(
@@ -349,29 +349,29 @@ def main() -> None:
                         if not valid_split(
                             ytr,
                             yva,
-                            min_train=CFG.min_train_rows_inner,
-                            min_val=CFG.min_val_rows_inner,
-                            min_pos=CFG.min_pos_per_split_inner,
-                            min_neg=CFG.min_neg_per_split_inner,
-                            ratio_lo=CFG.ratio_lo_inner,
+                            min_train=CFG.cv.min_train_rows_inner,
+                            min_val=CFG.cv.min_val_rows_inner,
+                            min_pos=CFG.cv.min_pos_per_split_inner,
+                            min_neg=CFG.cv.min_neg_per_split_inner,
+                            ratio_lo=CFG.cv.ratio_lo_inner,
                         ):
                             continue
 
                         if AVG_TWO_SEEDS_INNER:
                             vals: List[float] = []
-                            for sd in [CFG.random_seed, CFG.random_seed + 1]:
+                            for sd in [CFG.cv.random_seed, CFG.cv.random_seed + 1]:
                                 res = run_one_split_with_tracking(
                                     Xtr,
                                     ytr,
                                     Xva,
                                     yva,
                                     A,
-                                    lr=CFG.lr,
-                                    weight_decay=CFG.weight_decay,
-                                    max_epochs=CFG.max_epochs,
-                                    patience=CFG.patience,
-                                    batch_size=CFG.batch_size,
-                                    device=CFG.device,
+                                    lr=CFG.train.lr,
+                                    weight_decay=CFG.train.weight_decay,
+                                    max_epochs=CFG.train.max_epochs,
+                                    patience=CFG.train.patience,
+                                    batch_size=CFG.train.batch_size,
+                                    device=CFG.train.device,
                                     model_hparams=dict(
                                         hid=hid,
                                         heads=heads,
@@ -405,12 +405,12 @@ def main() -> None:
                                 Xva,
                                 yva,
                                 A,
-                                lr=CFG.lr,
-                                weight_decay=CFG.weight_decay,
-                                max_epochs=CFG.max_epochs,
-                                patience=CFG.patience,
-                                batch_size=CFG.batch_size,
-                                device=CFG.device,
+                                lr=CFG.train.lr,
+                                weight_decay=CFG.train.weight_decay,
+                                max_epochs=CFG.train.max_epochs,
+                                patience=CFG.train.patience,
+                                batch_size=CFG.train.batch_size,
+                                device=CFG.train.device,
                                 model_hparams=dict(
                                     hid=hid,
                                     heads=heads,
@@ -444,7 +444,7 @@ def main() -> None:
 
             study = optuna.create_study(
                 direction="minimize",
-                sampler=optuna.samplers.TPESampler(seed=CFG.random_seed),
+                sampler=optuna.samplers.TPESampler(seed=CFG.cv.random_seed),
             )
             study.optimize(objective, n_trials=20, show_progress_bar=False)
 
@@ -512,16 +512,16 @@ def main() -> None:
                     Xva_full,
                     yva_full,
                     A_best,
-                    lr=CFG.lr,
-                    weight_decay=CFG.weight_decay,
-                    max_epochs=CFG.max_epochs,
-                    patience=CFG.patience,
-                    batch_size=CFG.batch_size,
-                    device=CFG.device,
+                    lr=CFG.train.lr,
+                    weight_decay=CFG.train.weight_decay,
+                    max_epochs=CFG.train.max_epochs,
+                    patience=CFG.train.patience,
+                    batch_size=CFG.train.batch_size,
+                    device=CFG.train.device,
                     model_hparams=dict(
                         hid=hid, heads=heads, out=out_dim, dropout=dropout
                     ),
-                    seed=CFG.random_seed + s,
+                    seed=CFG.cv.random_seed + s,
                 )
                 logits_ens.append(res["val"]["logits"])
                 models_ens.append(res["model"])
@@ -550,10 +550,10 @@ def main() -> None:
 
             model_xai = models_ens[0]
             importance_occ = occlusion_sensitivity_gat(
-                model_xai, Xva_scaled, A_best, CFG.device
+                model_xai, Xva_scaled, A_best, CFG.train.device
             )
             importance_grad = gradient_input_gat(
-                model_xai, Xva_scaled, A_best, CFG.device
+                model_xai, Xva_scaled, A_best, CFG.train.device
             )
 
             xai_results_graph.append(
