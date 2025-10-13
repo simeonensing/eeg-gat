@@ -31,9 +31,9 @@ import numpy as np
 @dataclass
 class DataConfig:
     # Absolute or relative paths to your EEG files
-    pre_active_path: str = "data/TUS/EEG 3_EPOCX_218863_2025.08.28T10.58.26+12.00.edf"
-    post_sham_path: str = "data/TUS/EEG 2_EPOCX_218863_2025.08.28T10.34.10+12.00.edf"
-    post_active_path: str = "data/TUS/EEG 4_EPOCX_218863_2025.08.28T11.31.55+12.00.edf"
+    pre_active_path: str = "dataset/baseline.edf"
+    post_sham_path: str = "dataset/sham.edf"
+    post_active_path: str = "dataset/active.edf"
 
     montage_name: str = "standard_1020"
     keep_channels: List[str] = field(default_factory=lambda: [

@@ -133,13 +133,13 @@ def main() -> None:
         "[INFO] Loading and preprocessing dataset (SHARED for both pipelines)..."
     )
     raw_base = prep_raw(
-        CFG.pre_active_path, CFG.montage_name, CFG.keep_channels
+        CFG.data.pre_active_path, CFG.data.montage_name, CFG.data.keep_channels
     )
     raw_before = prep_raw(
-        CFG.post_sham_path, CFG.montage_name, CFG.keep_channels
+        CFG.data.post_sham_path, CFG.data.montage_name, CFG.data.keep_channels
     )
     raw_after = prep_raw(
-        CFG.post_active_path, CFG.montage_name, CFG.keep_channels
+        CFG.data.post_active_path, CFG.data.montage_name, CFG.data.keep_channels
     )
 
     sf_common = min(
@@ -152,7 +152,7 @@ def main() -> None:
             r.resample(sf_common, npad="auto")
 
     [raw_base, raw_before, raw_after], used_ch_names = align_channels(
-        [raw_base, raw_before, raw_after], CFG.keep_channels
+        [raw_base, raw_before, raw_after], CFG.data.keep_channels
     )
     print(
         f"[INFO] CSD preprocessing complete. "
@@ -180,7 +180,7 @@ def main() -> None:
     power_aft = full_power(data_aft_uV, sfreq, CFG.all_freqs, CFG.n_cycles)
 
     G, meyer, s_vals, degree_centrality, info_mne = build_graph_info(
-        raw_after, used_ch_names, CFG.montage_name, CFG.n_scales, CFG.s_max
+        raw_after, used_ch_names, CFG.data.montage_name, CFG.n_scales, CFG.s_max
     )
 
     feature_store: Dict[
