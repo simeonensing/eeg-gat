@@ -1,0 +1,14 @@
+artifact_uri: file:///Scratch/sensing/proof_of_concept/mlruns/756528113581862989/924691969e43451ea471f942160978af/artifacts
+end_time: 1760378275220
+entry_point_name: ''
+experiment_id: '756528113581862989'
+lifecycle_stage: active
+run_id: 924691969e43451ea471f942160978af
+run_name: trial-1
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1760378263033
+status: 3
+tags: []
+user_id: sensing

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ---- Settings (edit if your paths differ) ----
-BASE="/Scratch/sensing/proof_of_concept"
+BASE="./"
 OPTUNA_DB="$BASE/optuna.db"
 MLFLOW_DIR="$BASE/mlruns"
 TB_DIR="$BASE/results/tb"
