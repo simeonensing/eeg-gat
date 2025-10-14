@@ -150,6 +150,41 @@ SAVE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # ---------------- Tracking resolver (Optuna / MLflow / TensorBoard) ----------------
+# --- Helper: absolute Optuna URL resolver (portable dashboard print) ---
+def _abs_optuna_url(storage_url: str | None) -> str:
+    """Return an absolute URL for display/CLI while keeping config relative."""
+    from pathlib import Path
+    if not storage_url:
+        return ""
+    if storage_url.startswith("sqlite:///"):
+        raw = storage_url[len("sqlite:///"):]
+        p = Path(raw)
+        if not p.is_absolute():
+            p = (Path.cwd() / p).resolve()
+        return f"sqlite:///{p.as_posix()}"
+    if storage_url.startswith("journal://"):
+        raw = storage_url[len("journal://"):]
+        p = Path(raw)
+        if not p.is_absolute():
+            p = (Path.cwd() / p).resolve()
+        return f"journal://{p.as_posix()}"
+    return storage_url
+
+
+def _abs_path_from_uri(uri: str | None) -> str:
+    """Resolve MLflow/TensorBoard URIs (file:/ or relative) to absolute POSIX paths."""
+    if not uri:
+        return ""
+    from pathlib import Path
+    if uri.startswith("file:"):
+        raw = uri[len("file:"):]
+        p = Path(raw)
+        if not p.is_absolute():
+            p = (Path.cwd() / p).resolve()
+        return f"file:{p.as_posix()}"
+    return uri
+
+
 def _resolve_tracking():
     """
     Read optional settings from CFG to keep this file self-contained and backward compatible.
@@ -269,7 +304,6 @@ def main() -> None:
         if used_K < 2:
             print(f"[WARN] win={win_sec}s feasible outer folds={used_K}; skipping.")
             continue
-
         print(f"[INFO] win={win_sec}s -> SHARED outer_folds={used_K}, block_size_pairs={used_bs}, embargo={used_E}")
         outer_spec_by_win[win_sec] = (folds, used_K, used_bs, used_E)
         n_pairs_by_win[win_sec] = n_pairs_ref
@@ -318,6 +352,12 @@ def main() -> None:
 
             # ---------- Integrations (Optuna/MLflow/TensorBoard) ----------
             tracking = _resolve_tracking()
+            # TensorBoard dashboard hint
+            _tb = getattr(tracking['tb_root'], 'as_posix', lambda: str(tracking['tb_root']))()
+            print(f"[INFO] TensorBoard log directory: {_tb}")
+            print("[INFO] Launch TensorBoard with:")
+            print(f"       tensorboard --logdir \"{_tb}\" --port 6006")
+
 
             # Name the study deterministically (works in-memory AND with dashboard storages)
             time_tag = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -328,6 +368,10 @@ def main() -> None:
             if tracking["ml_tracking"] and mlflow is not None:
                 mlflow.set_tracking_uri(tracking["ml_tracking"])
                 mlflow.set_experiment(tracking["ml_experiment"])
+                print(f"[INFO] MLflow tracking URI: {tracking['ml_tracking']}")
+                print(f"[INFO] Launch MLflow UI with:")
+                print(f"       mlflow ui --backend-store-uri \"{_abs_path_from_uri(tracking['ml_tracking'])}\" --port 5000")
+
                 active_mlflow_parent = mlflow.start_run(run_name=study_name)
                 mlflow.set_tags({
                     "pipeline": "graph",
@@ -459,9 +503,9 @@ def main() -> None:
                     study_name=study_name,
                     load_if_exists=True,
                 )
-                print("[INFO] Optuna storage:", tracking["storage_url"])
+                print(f"[INFO] Optuna storage: {tracking['storage_url']}")
                 print("[INFO] Launch dashboard with:")
-                print(f"       optuna-dashboard \"{tracking['storage_url']}\"")
+                print(f"       optuna-dashboard \"{_abs_optuna_url(tracking['storage_url'])}\"")
             else:
                 # In-memory (still named)
                 study = optuna.create_study(
@@ -718,3 +762,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+
+
