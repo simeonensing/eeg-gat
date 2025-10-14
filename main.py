@@ -3,27 +3,7 @@
 
 """
 GWT+GAT (graph) vs Classical DSP+ML with XAI analysis.
-
-Enhanced with:
-- Occlusion sensitivity analysis for both pipelines
-- Gradient × Input attribution for GAT models
-- Consensus visualizations across methods
-- Topographic maps using MNE
-- CSV export for LaTeX tables
-- Validation loss learning curves
-- Reproducibility metadata CSV
-- Optuna trials CSVs (per-study & combined)
-
-NEW:
-- Writes per-fold ROC/PR/predictions CSVs for plotting helpers
-- Creates aggregated PR macro, probabilities, and calibration CSVs
-- Writes topomap CSVs (values + consensus) matching plotting expectations
-
-Integrations:
-- Named Optuna studies (memory or storage-backed)
-- Optuna Dashboard compatibility (set CFG.optuna.storage_url)
-- MLflow tracking (parent run per outer fold; nested per trial)
-- Live TensorBoard tracking (per-trial metrics/params)
+(Full file with robust dashboard launch fallbacks.)
 """
 
 from __future__ import annotations
@@ -33,6 +13,14 @@ from typing import Dict, List, Tuple
 from datetime import datetime
 import contextlib
 import os
+import sys
+
+# ---- sensible defaults for local dashboards (override via env) ----
+os.environ.setdefault("AUTO_DASHBOARDS", "1")
+os.environ.setdefault("DASH_HOST", "127.0.0.1")
+os.environ.setdefault("OPTUNA_PORT", "8080")
+os.environ.setdefault("MLFLOW_PORT", "5000")
+os.environ.setdefault("TB_PORT", "6006")
 
 import numpy as np
 import pandas as pd
@@ -54,30 +42,19 @@ matplotlib.rcParams.update(
     {
         "font.family": "serif",
         "font.serif": [
-            "Times New Roman",
-            "Times",
-            "Nimbus Roman",
-            "Liberation Serif",
-            "DejaVu Serif",
+            "Times New Roman", "Times", "Nimbus Roman", "Liberation Serif", "DejaVu Serif",
         ],
-        "mathtext.fontset": "stix",  # math matches Times
-        "axes.unicode_minus": False,  # proper minus sign with some serif fonts
-        # (optional, helps with vector exports)
-        "pdf.fonttype": 42,  # TrueType in PDFs
-        "ps.fonttype": 42,   # TrueType in PS
+        "mathtext.fontset": "stix",
+        "axes.unicode_minus": False,
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
     }
 )
 
 # Sklearn
 from sklearn.metrics import (
-    accuracy_score,
-    average_precision_score,
-    balanced_accuracy_score,
-    f1_score,
-    precision_score,
-    recall_score,
-    roc_auc_score,
-    roc_curve,
+    accuracy_score, average_precision_score, balanced_accuracy_score, f1_score,
+    precision_score, recall_score, roc_auc_score, roc_curve,
 )
 from sklearn.preprocessing import StandardScaler
 
@@ -106,7 +83,7 @@ except Exception:  # pragma: no cover
 try:
     import mlflow
 except Exception:  # pragma: no cover
-    mlflow = None  # allow running without mlflow installed
+    mlflow = None
 
 # Internal modules
 from config import CFG
@@ -114,111 +91,220 @@ from utils.blocking_splits import plan_inner, plan_outer
 from utils.classical_cv import classical_nested_cv
 from utils.gwt_features import build_gwt_feature_table
 from utils.shared_preprocessing import align_channels, prep_raw
-from utils.spectral_graph import (
-    band_baseline_from_base,
-    build_graph_info,
-    full_power,
-)
+from utils.spectral_graph import band_baseline_from_base, build_graph_info, full_power
 from utils.summary_helpers import export_results_to_csv, fmt_triplet
 from utils.temp_scaling import temperature_scale_logits
 from utils.train_eval import run_one_split_with_tracking
 from utils.utils import (
-    hard_purge_train_rows,
-    set_all_seeds,
-    valid_split,
-    write_reproducibility_csv,
+    hard_purge_train_rows, set_all_seeds, valid_split, write_reproducibility_csv,
 )
-from utils.xai import (
-    create_xai_summary_table,
-    gradient_input_gat,
-    occlusion_sensitivity_gat,
-)
+from utils.xai import create_xai_summary_table, gradient_input_gat, occlusion_sensitivity_gat
 from utils.plotting_helpers import plot_all
 
 # main.py
-from utils.settings import (
-    USE_TEMP_SCALING,
-    AVG_TWO_SEEDS_INNER,
-    OUTER_SEEDS,
-    USE_AP_SELECTION,
-)
+from utils.settings import USE_TEMP_SCALING, AVG_TWO_SEEDS_INNER, OUTER_SEEDS, USE_AP_SELECTION
 
 # ========================== CONFIG ==========================
 SAVE_DIR = Path(CFG.data.save_dir).expanduser().resolve()
 SAVE_DIR.mkdir(parents=True, exist_ok=True)
-(SAVE_DIR / "figures").mkdir(parents=True, exist_ok=True)  # ensure plot dir
+(SAVE_DIR / "figures").mkdir(parents=True, exist_ok=True)
 
-
-# ---------------- Tracking resolver (Optuna / MLflow / TensorBoard) ----------------
-# --- Helper: absolute Optuna URL resolver (portable dashboard print) ---
+# ---------------- Tracking helpers ----------------
 def _abs_optuna_url(storage_url: str | None) -> str:
-    """Return an absolute URL for display/CLI while keeping config relative."""
-    from pathlib import Path
+    """Absolute Optuna DSN for display."""
+    from pathlib import Path as _P
     if not storage_url:
         return ""
     if storage_url.startswith("sqlite:///"):
         raw = storage_url[len("sqlite:///"):]
-        p = Path(raw)
+        p = _P(raw)
         if not p.is_absolute():
-            p = (Path.cwd() / p).resolve()
+            p = (_P.cwd() / p).resolve()
         return f"sqlite:///{p.as_posix()}"
     if storage_url.startswith("journal://"):
         raw = storage_url[len("journal://"):]
-        p = Path(raw)
+        p = _P(raw)
         if not p.is_absolute():
-            p = (Path.cwd() / p).resolve()
+            p = (_P.cwd() / p).resolve()
         return f"journal://{p.as_posix()}"
     return storage_url
-
 
 def _abs_path_from_uri(uri: str | None) -> str:
     """Resolve MLflow/TensorBoard URIs (file:/ or relative) to absolute POSIX paths."""
     if not uri:
         return ""
-    from pathlib import Path
+    from pathlib import Path as _P
     if uri.startswith("file:"):
         raw = uri[len("file:"):]
-        p = Path(raw)
+        p = _P(raw)
         if not p.is_absolute():
-            p = (Path.cwd() / p).resolve()
+            p = (_P.cwd() / p).resolve()
         return f"file:{p.as_posix()}"
     return uri
 
+# ---- one-time dashboard launchers ------------------------------------------------
+_DASH_ONCE = False
+_OPTUNA_DASH_ONCE = False
+_MLFLOW_DASH_ONCE = False
+_TB_DASH_ONCE = False
+
+def _pick_port(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, default))
+    except Exception:
+        return default
+
+def _spawn_first(cmd_variants: list[list[str]]) -> bool:
+    """Try each command variant until one launches; silence output."""
+    import subprocess
+    for cmd in cmd_variants:
+        try:
+            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return True
+        except FileNotFoundError:
+            continue
+        except Exception:
+            continue
+    return False
+
+def _launch_optuna_dashboard_once(storage_url: str | None) -> None:
+    """Launch Optuna Dashboard; robust to PATH/env differences."""
+    import shutil
+    from pathlib import Path as _P
+    global _OPTUNA_DASH_ONCE
+    if _OPTUNA_DASH_ONCE or not storage_url:
+        return
+
+    host = os.environ.get("DASH_HOST", "127.0.0.1")
+    oport = _pick_port("OPTUNA_PORT", 8080)
+
+    # Normalize DSN and ensure sqlite file exists
+    optuna_abs = storage_url
+    if storage_url.startswith("sqlite:///"):
+        raw = storage_url[len("sqlite:///"):]
+        p = _P(raw)
+        if not p.is_absolute():
+            p = (_P.cwd() / p).resolve()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.touch(exist_ok=True)
+        optuna_abs = f"sqlite:///{p.as_posix()}"
+
+    # Candidate launchers: env override, PATH CLI, known absolute, python -m
+    cli_env = os.environ.get("OPTUNA_DASH_PATH")  # e.g. /Scratch/local/bin/optuna-dashboard
+    cli_path = shutil.which("optuna-dashboard")
+    candidates: list[list[str]] = []
+    if cli_env:
+        candidates.append([cli_env, "--host", host, "--port", str(oport), optuna_abs])
+    if cli_path:
+        candidates.append([cli_path, "--host", host, "--port", str(oport), optuna_abs])
+    # common local bin fallback (your system had this earlier)
+    for guess in ("/Scratch/local/bin/optuna-dashboard", "/usr/local/bin/optuna-dashboard"):
+        if Path(guess).exists():
+            candidates.append([guess, "--host", host, "--port", str(oport), optuna_abs])
+            break
+    # last resort: use the current Python env (works only if module installed there)
+    candidates.append([sys.executable, "-m", "optuna_dashboard.app", "--host", host, "--port", str(oport), optuna_abs])
+    candidates.append([sys.executable, "-m", "optuna_dashboard",      "--host", host, "--port", str(oport), optuna_abs])
+
+    if _spawn_first(candidates):
+        print(f"[DASH] optuna    ⇒ http://{host}:{oport}")
+        print(f"[INFO] Optuna Dashboard URL: http://{host}:{oport}")
+        print(f"       (storage={optuna_abs})")
+        _OPTUNA_DASH_ONCE = True
+    else:
+        print("➤ Optuna Dashboard could not be launched automatically.")
+        print("  Try one of these (depending on where it's installed):")
+        print(f"  {sys.executable} -m pip install --upgrade optuna-dashboard")
+        print(f"  optuna-dashboard --host {host} --port {oport} \"{optuna_abs}\"")
+        print(f"  {sys.executable} -m optuna_dashboard.app --host {host} --port {oport} \"{optuna_abs}\"")
+
+def _launch_mlflow_ui_once(tracking_uri: str | None) -> None:
+    import shutil
+    global _MLFLOW_DASH_ONCE
+    if _MLFLOW_DASH_ONCE or not tracking_uri:
+        return
+    host = os.environ.get("DASH_HOST", "127.0.0.1")
+    mport = _pick_port("MLFLOW_PORT", 5000)
+    cli_env = os.environ.get("MLFLOW_CLI_PATH")  # optional override
+    cli_path = shutil.which("mlflow")
+    uri = _abs_path_from_uri(tracking_uri)
+    candidates: list[list[str]] = []
+    if cli_env:
+        candidates.append([cli_env, "ui", "--backend-store-uri", uri, "--host", host, "--port", str(mport)])
+    if cli_path:
+        candidates.append([cli_path, "ui", "--backend-store-uri", uri, "--host", host, "--port", str(mport)])
+    candidates.append([sys.executable, "-m", "mlflow", "ui", "--backend-store-uri", uri, "--host", host, "--port", str(mport)])
+
+    if _spawn_first(candidates):
+        print(f"[DASH] mlflow    ⇒ http://{host}:{mport}")
+        print(f"[INFO] MLflow UI URL:       http://{host}:{mport}")
+        print(f"       (backend-store-uri={uri})")
+        _MLFLOW_DASH_ONCE = True
+    else:
+        print("[DASH] MLflow UI could not be launched automatically.")
+        print(f"  {sys.executable} -m pip install --upgrade mlflow")
+        print(f"  mlflow ui --backend-store-uri \"{uri}\" --host {host} --port {mport}")
+
+def _launch_tensorboard_once(tb_dir: Path | None) -> None:
+    import shutil
+    global _TB_DASH_ONCE
+    if _TB_DASH_ONCE or not tb_dir:
+        return
+    host = os.environ.get("DASH_HOST", "127.0.0.1")
+    tport = _pick_port("TB_PORT", 6006)
+    cli_env = os.environ.get("TB_CLI_PATH")  # optional override
+    cli_path = shutil.which("tensorboard")
+    candidates: list[list[str]] = []
+    if cli_env:
+        candidates.append([cli_env, "--logdir", str(tb_dir), "--host", host, "--port", str(tport)])
+    if cli_path:
+        candidates.append([cli_path, "--logdir", str(tb_dir), "--host", host, "--port", str(tport)])
+    candidates.append([sys.executable, "-m", "tensorboard.main", "--logdir", str(tb_dir), "--host", host, "--port", str(tport)])
+
+    if _spawn_first(candidates):
+        print(f"[DASH] tboard    ⇒ http://{host}:{tport}")
+        print(f"[INFO] TensorBoard URL:     http://{host}:{tport}")
+        print(f"       (logdir={tb_dir})")
+        _TB_DASH_ONCE = True
+    else:
+        print("[DASH] TensorBoard could not be launched automatically.")
+        print(f"  {sys.executable} -m pip install --upgrade tensorboard")
+        print(f"  tensorboard --logdir \"{tb_dir}\" --host {host} --port {tport}")
+
+def _maybe_launch_all_dashboards(tracking: dict) -> None:
+    """Call once per process to auto-launch + print URLs for all dashboards."""
+    auto = os.environ.get("AUTO_DASHBOARDS", "1").lower() not in ("0", "false", "no")
+    if auto:
+        _launch_optuna_dashboard_once(tracking.get("storage_url"))
+        _launch_mlflow_ui_once(tracking.get("ml_tracking"))
+        _launch_tensorboard_once(tracking.get("tb_root"))
+    else:
+        host = os.environ.get("DASH_HOST", "127.0.0.1")
+        print(f"[INFO] AUTO_DASHBOARDS disabled. Use these:")
+        if tracking.get("storage_url"):
+            print(f"  optuna-dashboard --host {host} --port {_pick_port('OPTUNA_PORT',8080)} \"{_abs_optuna_url(tracking['storage_url'])}\"")
+        if tracking.get("ml_tracking"):
+            print(f"  mlflow ui --backend-store-uri \"{_abs_path_from_uri(tracking['ml_tracking'])}\" --host {host} --port {_pick_port('MLFLOW_PORT',5000)}")
+        if tracking.get("tb_root"):
+            print(f"  tensorboard --logdir \"{tracking['tb_root']}\" --host {host} --port {_pick_port('TB_PORT',6006)}")
 
 def _resolve_tracking():
-    """
-    Read optional settings from CFG to keep this file self-contained and backward compatible.
-
-    Expected (all optional):
-      CFG.optuna.storage_url: e.g. "sqlite:///optuna.db" or "journal://optuna.journal"
-      CFG.optuna.study_prefix: short slug added to study names (default "study")
-      CFG.optuna.n_trials: int, default 20
-      CFG.optuna.seed: int, default CFG.cv.random_seed
-
-      CFG.mlflow.tracking_uri: e.g. "file:./mlruns" or "http://localhost:5000"
-      CFG.mlflow.experiment_name: e.g. "EEG-GWT-GAT"
-      CFG.mlflow.tags: dict of extra tags (optional)
-
-      CFG.tensorboard.log_dir: root TB directory (default SAVE_DIR/'tb')
-    """
+    """Read optional settings from CFG and materialize paths."""
     # -------- Optuna --------
     optuna_cfg = getattr(CFG, "optuna", object())
     storage_url = getattr(optuna_cfg, "storage_url", None)  # None => in-memory
     study_prefix = getattr(optuna_cfg, "study_prefix", "study")
     n_trials = getattr(optuna_cfg, "n_trials", 20)
     seed = getattr(optuna_cfg, "seed", getattr(CFG.cv, "random_seed", 42))
-
     # -------- MLflow --------
     mlflow_cfg = getattr(CFG, "mlflow", object())
     ml_tracking = getattr(mlflow_cfg, "tracking_uri", None)
     ml_experiment = getattr(mlflow_cfg, "experiment_name", "EEG-GWT-GAT")
     ml_tags = getattr(mlflow_cfg, "tags", {}) or {}
-
     # -------- TensorBoard --------
     tb_cfg = getattr(CFG, "tensorboard", object())
     tb_root = Path(getattr(tb_cfg, "log_dir", SAVE_DIR / "tb")).expanduser().resolve()
     tb_root.mkdir(parents=True, exist_ok=True)
-
     return {
         "storage_url": storage_url,
         "study_prefix": study_prefix,
@@ -229,7 +315,6 @@ def _resolve_tracking():
         "ml_tags": dict(ml_tags),
         "tb_root": tb_root,
     }
-
 
 def main() -> None:
     from utils.settings import RANDOM_SEED
@@ -352,14 +437,20 @@ def main() -> None:
 
             # ---------- Integrations (Optuna/MLflow/TensorBoard) ----------
             tracking = _resolve_tracking()
-            # TensorBoard dashboard hint
-            _tb = getattr(tracking['tb_root'], 'as_posix', lambda: str(tracking['tb_root']))()
-            print(f"[INFO] TensorBoard log directory: {_tb}")
+
+            # Launch dashboards once per process and print URLs
+            global _DASH_ONCE
+            if not _DASH_ONCE:
+                _maybe_launch_all_dashboards(tracking)
+                _DASH_ONCE = True
+
+            # TensorBoard dashboard hint for this run's subdir
+            _tb_root = getattr(tracking['tb_root'], 'as_posix', lambda: str(tracking['tb_root']))()
+            print(f"[INFO] TensorBoard log directory: {_tb_root}")
             print("[INFO] Launch TensorBoard with:")
-            print(f"       tensorboard --logdir \"{_tb}\" --port 6006")
+            print(f"       tensorboard --logdir \"{_tb_root}\" --port {os.environ.get('TB_PORT','6006')}")
 
-
-            # Name the study deterministically (works in-memory AND with dashboard storages)
+            # Name the study deterministically
             time_tag = datetime.now().strftime("%Y%m%d-%H%M%S")
             study_name = f"{tracking['study_prefix']}_graph_win{win_sec}_fold{ofold+1}_{time_tag}"
 
@@ -370,8 +461,7 @@ def main() -> None:
                 mlflow.set_experiment(tracking["ml_experiment"])
                 print(f"[INFO] MLflow tracking URI: {tracking['ml_tracking']}")
                 print(f"[INFO] Launch MLflow UI with:")
-                print(f"       mlflow ui --backend-store-uri \"{_abs_path_from_uri(tracking['ml_tracking'])}\" --port 5000")
-
+                print(f"       mlflow ui --backend-store-uri \"{_abs_path_from_uri(tracking['ml_tracking'])}\" --port {os.environ.get('MLFLOW_PORT','5000')}")
                 active_mlflow_parent = mlflow.start_run(run_name=study_name)
                 mlflow.set_tags({
                     "pipeline": "graph",
@@ -395,7 +485,6 @@ def main() -> None:
 
                 with child_ctx:
                     try:
-                        # Annotate trial for exports/dashboards
                         trial.set_user_attr("window_s", win_sec)
                         trial.set_user_attr("outer_fold", ofold + 1)
 
@@ -406,15 +495,9 @@ def main() -> None:
                         out_dim   = trial.suggest_categorical("out", [8, 12])
                         dropout   = trial.suggest_float("dropout", 0.28, 0.38)
 
-                        # Log params early so they appear even if pruned
                         if mlflow is not None and tracking["ml_tracking"]:
                             mlflow.log_params({
-                                "band": band_name,
-                                "s_idx": s_idx,
-                                "hid": hid,
-                                "heads": heads,
-                                "out": out_dim,
-                                "dropout": dropout,
+                                "band": band_name, "s_idx": s_idx, "hid": hid, "heads": heads, "out": out_dim, "dropout": dropout,
                             })
 
                         X_all, y_all, A, _ = feature_store[(band_name, s_idx, win_sec)]
@@ -476,7 +559,6 @@ def main() -> None:
                             raise TrialPruned("No valid inner splits for this configuration.")
 
                         value = float(np.mean(scores))
-                        # Report once so TB sees the metric even for fast objectives
                         trial.report(value, step=0)
 
                         if mlflow is not None and tracking["ml_tracking"]:
@@ -487,41 +569,31 @@ def main() -> None:
                     except TrialPruned:
                         raise
                     except Exception as e:  # noqa: BLE001
-                        # Optional: expose error in MLflow for quick triage
                         if mlflow is not None and tracking["ml_tracking"]:
                             mlflow.set_tag("error", str(e))
-                        # Fail-safe prune to keep study moving
                         raise TrialPruned(str(e))
 
             # Create study (named). Dashboard-ready if storage is set.
             sampler = optuna.samplers.TPESampler(seed=tracking["seed"])
             if tracking["storage_url"]:
                 study = optuna.create_study(
-                    direction="minimize",
-                    sampler=sampler,
-                    storage=tracking["storage_url"],
-                    study_name=study_name,
-                    load_if_exists=True,
+                    direction="minimize", sampler=sampler,
+                    storage=tracking["storage_url"], study_name=study_name, load_if_exists=True,
                 )
                 print(f"[INFO] Optuna storage: {tracking['storage_url']}")
                 print("[INFO] Launch dashboard with:")
                 print(f"       optuna-dashboard \"{_abs_optuna_url(tracking['storage_url'])}\"")
             else:
-                # In-memory (still named)
-                study = optuna.create_study(
-                    direction="minimize",
-                    sampler=sampler,
-                    study_name=study_name,
-                )
+                study = optuna.create_study(direction="minimize", sampler=sampler, study_name=study_name)
 
-            # Attach metadata (visible in dashboard / exports)
+            # Attach metadata
             study.set_user_attr("pipeline", "graph")
             study.set_user_attr("window_s", win_sec)
             study.set_user_attr("outer_fold", ofold + 1)
 
             callbacks = []
-            if tb_cb is not None:
-                callbacks.append(tb_cb)
+            if TensorBoardCallback is not None:
+                callbacks.append(TensorBoardCallback(str(tb_dir), metric_name="objective"))
 
             try:
                 study.optimize(
@@ -531,8 +603,11 @@ def main() -> None:
                     show_progress_bar=False,
                 )
             finally:
-                if active_mlflow_parent is not None and mlflow is not None:
-                    mlflow.end_run()
+                if mlflow is not None:
+                    try:
+                        active_mlflow_parent and mlflow.end_run()
+                    except Exception:
+                        pass
 
             # save all trials for this study (graph)
             try:
@@ -625,7 +700,6 @@ def main() -> None:
             else:
                 fpr, tpr = np.array([0, 1]), np.array([0, 1])
 
-            # ---- per-fold artifacts for graph ----
             write_fold_artifacts(prefix="gwt_gat", fold=ofold + 1, y_true=yv, y_prob=pv,
                                  outdir=SAVE_DIR, fpr=fpr, tpr=tpr)
 
@@ -652,18 +726,12 @@ def main() -> None:
         fold_histories_classical,
         xai_results_classical,
     ) = classical_nested_cv(
-        raw_before=raw_before,
-        raw_after=raw_after,
-        raw_base=raw_base,
-        outer_spec_by_win=outer_spec_by_win,
-        n_pairs_by_win=n_pairs_by_win,
-        info_mne=info_mne,
-        ch_names=used_ch_names,
-        optuna_best_rows=optuna_best_rows,
-        optuna_all_trials_rows=optuna_all_trials_rows,
+        raw_before=raw_before, raw_after=raw_after, raw_base=raw_base,
+        outer_spec_by_win=outer_spec_by_win, n_pairs_by_win=n_pairs_by_win,
+        info_mne=info_mne, ch_names=used_ch_names,
+        optuna_best_rows=optuna_best_rows, optuna_all_trials_rows=optuna_all_trials_rows,
     )
 
-    # Build & save classical topomap CSVs
     if xai_results_classical:
         all_occ_c = np.concatenate([r["occlusion"] for r in xai_results_classical], axis=0)
         importance_dict_c = {"Occlusion": all_occ_c}
@@ -672,8 +740,7 @@ def main() -> None:
 
     # ---- per-fold artifacts for classical ----
     for i, pf in enumerate(per_fold_preds_classical, 1):
-        yv = pf.get("ytrue")
-        pv = pf.get("probs")
+        yv = pf.get("ytrue"); pv = pf.get("probs")
         if yv is None or pv is None:
             continue
         if len(np.unique(yv)) > 1 and len(pv) > 0:
@@ -704,7 +771,7 @@ def main() -> None:
     sum_graph = summarize(per_fold_metrics_graph)
     sum_class = summarize(per_fold_metrics_classical)
 
-    # Macro PR (compute from saved predictions using same routine the plotter will read)
+    # Macro PR
     build_macro_pr_csv("gwt_gat", SAVE_DIR)
     build_macro_pr_csv("classical", SAVE_DIR)
 
@@ -713,13 +780,8 @@ def main() -> None:
     print("=" * 80)
     print(f"{'Metric':<12} {'Graph (GWT+GAT)':<28} {'Classical (DSP+ML)':<28}")
     for k, label in [
-        ("acc",  "Accuracy"),
-        ("bacc", "BalancedAcc"),
-        ("f1",   "F1"),
-        ("prec", "Precision"),
-        ("rec",  "Recall"),
-        ("auc",  "ROC AUC"),
-        ("ap",   "AP"),
+        ("acc",  "Accuracy"), ("bacc", "BalancedAcc"), ("f1", "F1"),
+        ("prec", "Precision"), ("rec", "Recall"), ("auc", "ROC AUC"), ("ap", "AP"),
     ]:
         print(f"{label:<12} {fmt_triplet(sum_graph.get(k)):<28} {fmt_triplet(sum_class.get(k)):<28}")
 
@@ -743,15 +805,13 @@ def main() -> None:
             print(f"[WARN] Could not concatenate all trials: {e}")
 
     export_results_to_csv(
-        sum_graph, sum_class, float("nan"), float("nan"),  # macro areas omitted to avoid double definitions
+        sum_graph, sum_class, float("nan"), float("nan"),
         best_params_graph, best_params_class,
     )
 
-    # ---- Build aggregated artifacts for plotting helpers (calibration, probabilities) ----
     finalize_prefix("gwt_gat", SAVE_DIR)
     finalize_prefix("classical", SAVE_DIR)
 
-    # Generate figures (reads the files we just wrote)
     plot_all()
 
     print("\n" + "=" * 80)
@@ -759,10 +819,5 @@ def main() -> None:
     print("=" * 80)
     print(f"Results saved to: {SAVE_DIR.absolute()}")
 
-
 if __name__ == "__main__":
     main()
-
-
-
-

@@ -190,7 +190,7 @@ class OptunaConfig:
     # None => in-memory studies (still named). Set e.g. "sqlite:///optuna.db" to enable dashboard.
     storage_url: str | None = None
     study_prefix: str = "eeg"
-    n_trials: int = 32
+    n_trials: int = 20
     seed: int = 42
 
     def to_dict(self) -> Dict[str, Any]:
