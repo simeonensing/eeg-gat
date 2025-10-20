@@ -14,6 +14,7 @@ from datetime import datetime
 import contextlib
 import os
 import sys
+os.system("bash scripts/cleanup_dashboards.sh --force --keep-results")
 
 # --- Reproducibility toggles ---
 os.environ["PYTHONHASHSEED"] = "0"

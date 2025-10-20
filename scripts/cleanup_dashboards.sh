@@ -4,7 +4,7 @@ set -euo pipefail
 # =========================
 # Settings (edit if needed)
 # =========================
-BASE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # script dir as base
+BASE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OPTUNA_DB="$BASE/tracking/optuna.db"
 MLFLOW_DIR="$BASE/tracking/mlruns"
 TB_DIR="$BASE/tracking/tb"

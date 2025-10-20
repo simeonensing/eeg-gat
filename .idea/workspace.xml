@@ -5,7 +5,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="59f9d7fe-b152-4a0e-b94e-63e799c940db" name="Changes" comment="Updates">
-      <change beforePath="$PROJECT_DIR$/proof_of_concept/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/proof_of_concept/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/license.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cleanup_dashboards.sh" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/cleanup_dashboards.sh" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -47,6 +51,7 @@
   </component>
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
+    "ASKED_MARK_IGNORED_FILES_AS_EXCLUDED": "true",
     "ModuleVcsDetector.initialDetectionPerformed": "true",
     "Python.XAI.executor": "Run",
     "Python.XAI_V5.executor": "Run",
@@ -73,6 +78,7 @@
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
     "RunOnceActivity.git.unshallow": "true",
     "SHELLCHECK.PATH": "/home/sensing/.local/share/JetBrains/PyCharmCE2025.2/Shell Script/shellcheck",
+    "Shell Script.cleanup_dashboards.sh.executor": "Run",
     "Shell Script.stop_dashboards.sh.executor": "Run",
     "git-widget-placeholder": "main",
     "last_opened_file_path": "/Scratch/sensing/eeg-gat",
@@ -84,6 +90,7 @@
       <recent name="$PROJECT_DIR$" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/scripts" />
       <recent name="$PROJECT_DIR$/utils" />
       <recent name="$PROJECT_DIR$/dataset/" />
       <recent name="$PROJECT_DIR$/entropy_delta_topomaps" />
