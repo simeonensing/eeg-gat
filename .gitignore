@@ -1,8 +1,16 @@
-__pycache__/
-*.py[cod]
-*.egg-info/
+# virtual environment
 .venv/
+__pycache__/
+*.pyc
+
+# experiment outputs
 results/
-.idea/
-.vscode/
-.ipynb_checkpoints/
+tracking/
+
+# reproducibility snapshots (optional to ignore if you commit them intentionally)
+reproducibility/*.json
+reproducibility/*.txt
+
+# system files
+.DS_Store
+Thumbs.db

@@ -326,12 +326,8 @@ def load_cfg(yaml_path: str | None = None) -> ExperimentConfig:
 # Public singleton you can import everywhere:
 CFG: ExperimentConfig = load_cfg()
 # Absolute paths for your machine
-CFG.optuna.storage_url = "sqlite:///./optuna.db"
-CFG.mlflow.tracking_uri = "file:./mlruns"
+TRACKING_ROOT = (PROJECT_ROOT / "tracking").resolve()
+CFG.optuna.storage_url = f"sqlite:///{(TRACKING_ROOT / 'optuna.db').as_posix()}"
+CFG.mlflow.tracking_uri = f"file:{(TRACKING_ROOT / 'mlruns').as_posix()}"
 CFG.mlflow.experiment_name = "eeg-gwtgat-vs-classical"
-CFG.tensorboard.log_dir = "./results/tb"
-
-
-
-# TensorBoard log dir override
-CFG.tensorboard.log_dir = "./results/tb"
+CFG.tensorboard.log_dir = str(TRACKING_ROOT / "tb")

@@ -15,6 +15,17 @@ import contextlib
 import os
 import sys
 
+# --- Reproducibility toggles ---
+os.environ["PYTHONHASHSEED"] = "0"
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")  # determinism on CUDA
+try:
+    import torch
+    torch.use_deterministic_algorithms(True)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+except Exception:
+    pass
+
 # ---- sensible defaults for local dashboards (override via env) ----
 os.environ.setdefault("AUTO_DASHBOARDS", "1")
 os.environ.setdefault("DASH_HOST", "127.0.0.1")
@@ -198,10 +209,6 @@ def _launch_optuna_dashboard_once(storage_url: str | None) -> None:
     if cli_path:
         candidates.append([cli_path, "--host", host, "--port", str(oport), optuna_abs])
     # common local bin fallback (your system had this earlier)
-    for guess in ("/Scratch/local/bin/optuna-dashboard", "/usr/local/bin/optuna-dashboard"):
-        if Path(guess).exists():
-            candidates.append([guess, "--host", host, "--port", str(oport), optuna_abs])
-            break
     # last resort: use the current Python env (works only if module installed there)
     candidates.append([sys.executable, "-m", "optuna_dashboard.app", "--host", host, "--port", str(oport), optuna_abs])
     candidates.append([sys.executable, "-m", "optuna_dashboard",      "--host", host, "--port", str(oport), optuna_abs])
@@ -473,6 +480,11 @@ def main() -> None:
             # TensorBoard callback (per-trial)
             tb_cb = None
             tb_dir = tracking["tb_root"] / f"{study_name}"
+            print(f"[INFO] TensorBoard log directory: {tb_dir}")
+            if TensorBoardCallback is None:
+                print("[WARN] Optuna TensorBoardCallback is unavailable. Install tensorboard:")
+                print("       pip install tensorboard  # or: pip install tensorboardX")
+
             if TensorBoardCallback is not None:
                 tb_cb = TensorBoardCallback(str(tb_dir), metric_name="objective")
 
@@ -560,6 +572,24 @@ def main() -> None:
 
                         value = float(np.mean(scores))
                         trial.report(value, step=0)
+                        # --- Always write at least one scalar to TensorBoard ---
+                        try:
+                            # Prefer PyTorch’s built-in writer if available
+                            from torch.utils.tensorboard import SummaryWriter as _TBWriter  # type: ignore
+                            _w = _TBWriter(log_dir=str(tb_dir))
+                            _w.add_scalar("objective", float(value), trial.number)
+                            _w.flush();
+                            _w.close()
+                        except Exception:
+                            try:
+                                # Fallback to tensorboardX if installed
+                                from tensorboardX import SummaryWriter as _TBWriter  # type: ignore
+                                _w = _TBWriter(logdir=str(tb_dir))
+                                _w.add_scalar("objective", float(value), trial.number)
+                                _w.flush();
+                                _w.close()
+                            except Exception as _e:
+                                print(f"[WARN] Could not write TensorBoard scalar: {_e}")
 
                         if mlflow is not None and tracking["ml_tracking"]:
                             mlflow.log_metric("objective", value)
