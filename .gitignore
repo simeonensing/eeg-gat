@@ -10,3 +10,4 @@ reproducibility/*.txt
 # system files
 .DS_Store
 Thumbs.db
+*.bak
