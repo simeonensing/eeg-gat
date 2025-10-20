@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17401702.svg)](https://doi.org/10.5281/zenodo.17401702)
+
 # Graph-Wavelet Patterns with Graph Attention Networks for Cognitive State Classification: A Nested Optimization and Explainable AI Framework
 
 
