@@ -1,0 +1,6 @@
+artifact_location: file:///home/sensing/eeg-gat/tracking/mlruns/410325243298950384
+creation_time: 1760983361885
+experiment_id: '410325243298950384'
+last_update_time: 1760983361885
+lifecycle_stage: active
+name: eeg-gwtgat-vs-classical

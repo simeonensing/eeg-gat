@@ -3,10 +3,6 @@
 __pycache__/
 *.pyc
 
-# experiment outputs
-
-tracking/
-
 # reproducibility snapshots (optional to ignore if you commit them intentionally)
 reproducibility/*.json
 reproducibility/*.txt

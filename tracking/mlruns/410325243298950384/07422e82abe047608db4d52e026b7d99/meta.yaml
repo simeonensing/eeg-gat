@@ -1,0 +1,14 @@
+artifact_uri: file:///home/sensing/eeg-gat/tracking/mlruns/410325243298950384/07422e82abe047608db4d52e026b7d99/artifacts
+end_time: 1760983999503
+entry_point_name: ''
+experiment_id: '410325243298950384'
+lifecycle_stage: active
+run_id: 07422e82abe047608db4d52e026b7d99
+run_name: trial-18
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1760983985142
+status: 3
+tags: []
+user_id: sensing
