@@ -10,7 +10,7 @@ Minimal codebase for comparing **classical DSP/ML** and **graph-based GNN** pipe
 
 ```bash
 git clone https://github.com/<your-username>/eeg-gat.git
-cd proof_of_concept
+cd eeg-get
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
